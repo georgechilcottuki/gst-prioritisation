@@ -2,6 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
+<script src="https://alcdn.msauth.net/browser/2.38.3/js/msal-browser.min.js"></script>
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>GST — Prioritisation Framework</title>
 <style>
@@ -930,193 +931,257 @@
 
 <script>
 /* =============================================================
-   SharePoint List integration
-   Site: https://betfairprod.sharepoint.com/sites/gamingsupertribelt
-   List: GST Prioritisation
-   Uses SharePoint REST API with cookie-based M365 auth
+   SharePoint integration via MSAL (OAuth 2.0)
+   App Registration: 971c9115-3f0f-45c5-bbaa-ae9c03cc8761
+   Tenant: 7acc61c5-e4a5-49d2-a52a-3ce24c726371
    ============================================================= */
 
-var SP_SITE = 'https://betfairprod.sharepoint.com/sites/gamingsupertribelt';
-var SP_LIST = 'GST Prioritisation';
-var SP_API  = SP_SITE + "/_api/web/lists/getbytitle('" + encodeURIComponent(SP_LIST) + "')/items";
+var SP_CLIENT_ID = '971c9115-3f0f-45c5-bbaa-ae9c03cc8761';
+var SP_TENANT_ID = '7acc61c5-e4a5-49d2-a52a-3ce24c726371';
+var SP_SITE      = 'https://betfairprod.sharepoint.com/sites/gamingsupertribelt';
+var SP_LIST      = 'GST Prioritisation';
+var SP_API       = SP_SITE + "/_api/web/lists/getbytitle('" + encodeURIComponent(SP_LIST) + "')/items";
+var SP_SCOPE     = 'https://betfairprod.sharepoint.com/AllSites.Write';
+var REDIRECT_URI = 'https://georgechilcottuki.github.io/gst-prioritisation/';
 
-var spReady = false;   // true once we've confirmed SP is reachable
-var spError = false;   // true if SP auth failed — fallback to localStorage
+var _msalApp    = null;
+var _spToken    = null;
+var _tokenExpiry= 0;
+var spReady     = false;
+var spError     = false;
 
-// ── SharePoint request digest (needed for POST/PATCH/DELETE) ──
-var _digest = null;
-var _digestExpiry = 0;
-
-function getDigest(callback) {
-  var now = Date.now();
-  if (_digest && now < _digestExpiry) { callback(_digest); return; }
-  fetch(SP_SITE + '/_api/contextinfo', {
-    method: 'POST',
-    credentials: 'include',
-    headers: { 'Accept': 'application/json;odata=verbose', 'Content-Type': 'application/json;odata=verbose' }
-  })
-  .then(function(r){ return r.json(); })
-  .then(function(d){
-    _digest = d.d.GetContextWebInformation.FormDigestValue;
-    _digestExpiry = now + (d.d.GetContextWebInformation.FormDigestTimeoutSeconds - 30) * 1000;
-    callback(_digest);
-  })
-  .catch(function(){ spError=true; callback(null); });
+// ── Initialise MSAL ───────────────────────────────────────────
+function initMSAL() {
+  if (typeof msal === 'undefined') { spError=true; setStatus('offline'); return; }
+  _msalApp = new msal.PublicClientApplication({
+    auth: {
+      clientId:    SP_CLIENT_ID,
+      authority:   'https://login.microsoftonline.com/' + SP_TENANT_ID,
+      redirectUri: REDIRECT_URI
+    },
+    cache: { cacheLocation: 'sessionStorage', storeAuthStateInCookie: false }
+  });
+  // Handle redirect response on page load
+  _msalApp.handleRedirectPromise().then(function(resp) {
+    if (resp && resp.accessToken) {
+      _spToken    = resp.accessToken;
+      _tokenExpiry = Date.now() + (resp.expiresOn - new Date()) ;
+    }
+    spLoadAll(function(ok) {
+      setStatus(ok ? 'online' : 'offline');
+      updateCount();
+      renderBacklog();
+    });
+  }).catch(function(e) {
+    console.error('MSAL redirect error:', e);
+    spError = true;
+    setStatus('offline');
+    loadLocalFallback();
+  });
 }
 
-// ── Map app item → SharePoint fields ──────────────────────────
+// ── Get a valid access token ──────────────────────────────────
+function getToken(callback) {
+  if (_spToken && Date.now() < _tokenExpiry - 60000) { callback(_spToken); return; }
+  var accounts = _msalApp ? _msalApp.getAllAccounts() : [];
+  var request  = { scopes: [SP_SCOPE] };
+  if (accounts.length > 0) {
+    request.account = accounts[0];
+    _msalApp.acquireTokenSilent(request).then(function(resp) {
+      _spToken    = resp.accessToken;
+      _tokenExpiry = Date.now() + 3500000;
+      callback(_spToken);
+    }).catch(function() {
+      // Silent failed — try popup
+      _msalApp.acquireTokenPopup(request).then(function(resp) {
+        _spToken    = resp.accessToken;
+        _tokenExpiry = Date.now() + 3500000;
+        callback(_spToken);
+      }).catch(function(e) {
+        console.error('Token popup failed:', e);
+        spError = true; setStatus('offline'); callback(null);
+      });
+    });
+  } else {
+    // No account — redirect to login
+    setStatus('loading');
+    _msalApp.loginRedirect({ scopes: [SP_SCOPE] });
+  }
+}
+
+// ── Map app item → SharePoint fields ─────────────────────────
 function itemToSP(it) {
   return {
     '__metadata': { 'type': 'SP.Data.GST_x0020_PrioritisationListItem' },
-    'Title':          it.initiative   || '',
-    'Brand':          it.brand        || '',
-    'ValueStream':    it.valuestream  || '',
-    'InvestType':     it.investtype   || '',
-    'Status':         it.status       || '',
-    'Tribe':          it.tribe        || '',
-    'Sponsor':        it.sponsor      || '',
-    'Owner':          it.owner        || '',
-    'GoLive':         it.golive       || '',
-    'Confluence':     it.confluence   || '',
-    'Comments':       it.comments     || '',
-    'MissionMetric':  it.missionmetric|| '',
-    'VSMetric':       it.vsmetric     || '',
-    'Impact':         it.impact       || '',
-    'Commercial':     it.commercial   || '',
-    'BizRisk':        it.bizrisk      || '',
-    'Urgency':        it.urgency      || '',
-    'Reason':         it.reason       || '',
-    'Effort':         it.effort       || '',
-    'ProductPriority':it.productPriority || 0,
-    'Priority':       it.priority     || 0,
-    'DateAdded':      it.dateAdded    || '',
-    'IsWip':          it.isWip        || false,
-    'AppId':          String(it.id)
+    'Title':           it.initiative    || '',
+    'Brand':           it.brand         || '',
+    'ValueStream':     it.valuestream   || '',
+    'InvestType':      it.investtype    || '',
+    'Status':          it.status        || '',
+    'Tribe':           it.tribe         || '',
+    'Sponsor':         it.sponsor       || '',
+    'Owner':           it.owner         || '',
+    'GoLive':          it.golive        || '',
+    'Confluence':      it.confluence    || '',
+    'Comments':        it.comments      || '',
+    'MissionMetric':   it.missionmetric || '',
+    'VSMetric':        it.vsmetric      || '',
+    'Impact':          it.impact        || '',
+    'Commercial':      it.commercial    || '',
+    'BizRisk':         it.bizrisk       || '',
+    'Urgency':         it.urgency       || '',
+    'Reason':          it.reason        || '',
+    'Effort':          it.effort        || '',
+    'ProductPriority': it.productPriority || 0,
+    'Priority':        it.priority      || 0,
+    'DateAdded':       it.dateAdded     || '',
+    'IsWip':           it.isWip         || false,
+    'AppId':           String(it.id)
   };
 }
 
 // ── Map SharePoint item → app item ────────────────────────────
 function spToItem(sp) {
   return {
-    id:             parseFloat(sp.AppId) || sp.Id,
-    spId:           sp.Id,   // SharePoint's own integer ID for PATCH/DELETE
-    initiative:     sp.Title          || '',
-    brand:          sp.Brand          || '',
-    valuestream:    sp.ValueStream    || '',
-    investtype:     sp.InvestType     || '',
-    status:         sp.Status         || '',
-    tribe:          sp.Tribe          || '',
-    sponsor:        sp.Sponsor        || '',
-    owner:          sp.Owner          || '',
-    golive:         sp.GoLive         || '',
-    confluence:     sp.Confluence     || '',
-    comments:       sp.Comments       || '',
-    missionmetric:  sp.MissionMetric  || '',
-    vsmetric:       sp.VSMetric       || '',
-    impact:         sp.Impact         || '',
-    commercial:     sp.Commercial     || '',
-    bizrisk:        sp.BizRisk        || '',
-    urgency:        sp.Urgency        || '',
-    reason:         sp.Reason         || '',
-    effort:         sp.Effort         || '',
-    productPriority:sp.ProductPriority|| 0,
-    priority:       sp.Priority       || 0,
-    dateAdded:      sp.DateAdded      || '',
-    isWip:          sp.IsWip          || false,
-    // Scores will be recalculated by resolveScores on render
-    brandScore:0,investScore:0,mmScore:0,vsScore:0,impactScore:0,
-    commScore:0,riskScore:0,urgScore:0,reasonScore:0,effortScore:0
+    id:              parseFloat(sp.AppId) || sp.Id,
+    spId:            sp.Id,
+    initiative:      sp.Title           || '',
+    brand:           sp.Brand           || '',
+    valuestream:     sp.ValueStream     || '',
+    investtype:      sp.InvestType      || '',
+    status:          sp.Status          || '',
+    tribe:           sp.Tribe           || '',
+    sponsor:         sp.Sponsor         || '',
+    owner:           sp.Owner           || '',
+    golive:          sp.GoLive          || '',
+    confluence:      sp.Confluence      || '',
+    comments:        sp.Comments        || '',
+    missionmetric:   sp.MissionMetric   || '',
+    vsmetric:        sp.VSMetric        || '',
+    impact:          sp.Impact          || '',
+    commercial:      sp.Commercial      || '',
+    bizrisk:         sp.BizRisk         || '',
+    urgency:         sp.Urgency         || '',
+    reason:          sp.Reason          || '',
+    effort:          sp.Effort          || '',
+    productPriority: sp.ProductPriority || 0,
+    priority:        sp.Priority        || 0,
+    dateAdded:       sp.DateAdded       || '',
+    isWip:           sp.IsWip           || false,
+    brandScore:0, investScore:0, mmScore:0, vsScore:0, impactScore:0,
+    commScore:0, riskScore:0, urgScore:0, reasonScore:0, effortScore:0
   };
 }
 
-// ── Fetch all items from SharePoint ──────────────────────────
+// ── Fetch all items ───────────────────────────────────────────
 function spLoadAll(callback) {
-  var url = SP_API + '?$select=*&$top=5000&$orderby=ProductPriority desc';
-  fetch(url, {
-    credentials: 'include',
-    headers: { 'Accept': 'application/json;odata=verbose' }
-  })
-  .then(function(r){
-    if(r.status === 401 || r.status === 403){ spError=true; throw new Error('auth'); }
-    return r.json();
-  })
-  .then(function(d){
-    spReady = true;
-    var all = (d.d && d.d.results) ? d.d.results : [];
-    initiatives    = all.filter(function(i){ return !i.IsWip; }).map(spToItem);
-    wipInitiatives = all.filter(function(i){ return  i.IsWip; }).map(spToItem);
-    callback(true);
-  })
-  .catch(function(e){
-    spError = true;
-    callback(false);
+  getToken(function(token) {
+    if (!token) { spError=true; callback(false); return; }
+    fetch(SP_API + '?$select=*&$top=5000&$orderby=ProductPriority desc', {
+      headers: {
+        'Authorization': 'Bearer ' + token,
+        'Accept': 'application/json;odata=verbose'
+      }
+    })
+    .then(function(r) {
+      if (!r.ok) throw new Error(r.status);
+      return r.json();
+    })
+    .then(function(d) {
+      spReady = true; spError = false;
+      var all = (d.d && d.d.results) ? d.d.results : [];
+      initiatives    = all.filter(function(i){ return !i.IsWip; }).map(spToItem);
+      wipInitiatives = all.filter(function(i){ return  i.IsWip; }).map(spToItem);
+      callback(true);
+    })
+    .catch(function(e) {
+      console.error('SP load error:', e);
+      spError = true; callback(false);
+    });
   });
 }
 
-// ── Save a single item (create or update) ────────────────────
-function spSaveItem(it, callback) {
-  if(spError){ callback && callback(); return; }
-  getDigest(function(digest){
-    if(!digest){ callback && callback(); return; }
-    var body = JSON.stringify(itemToSP(it));
-    var headers = {
-      'Accept':       'application/json;odata=verbose',
-      'Content-Type': 'application/json;odata=verbose',
-      'X-RequestDigest': digest
-    };
-    if(it.spId) {
-      // Update existing item
-      headers['X-HTTP-Method']  = 'MERGE';
-      headers['IF-MATCH']       = '*';
-      fetch(SP_API + '(' + it.spId + ')', {
-        method: 'POST', credentials: 'include', headers: headers, body: body
-      }).then(function(){ callback && callback(); })
-        .catch(function(){ callback && callback(); });
-    } else {
-      // Create new item
-      fetch(SP_API, {
-        method: 'POST', credentials: 'include', headers: headers, body: body
-      })
-      .then(function(r){ return r.json(); })
-      .then(function(d){
-        it.spId = d.d.Id;  // store SP's ID for future updates
-        callback && callback();
-      })
-      .catch(function(){ callback && callback(); });
+// ── Get request digest for write operations ───────────────────
+var _digest = null, _digestExpiry = 0;
+function getDigest(token, callback) {
+  if (_digest && Date.now() < _digestExpiry) { callback(_digest); return; }
+  fetch(SP_SITE + '/_api/contextinfo', {
+    method: 'POST',
+    headers: {
+      'Authorization': 'Bearer ' + token,
+      'Accept': 'application/json;odata=verbose',
+      'Content-Type': 'application/json;odata=verbose'
     }
+  })
+  .then(function(r){ return r.json(); })
+  .then(function(d){
+    _digest      = d.d.GetContextWebInformation.FormDigestValue;
+    _digestExpiry = Date.now() + (d.d.GetContextWebInformation.FormDigestTimeoutSeconds - 30) * 1000;
+    callback(_digest);
+  })
+  .catch(function(){ callback(null); });
+}
+
+// ── Save a single item ────────────────────────────────────────
+function spSaveItem(it, callback) {
+  if (spError) { callback && callback(); return; }
+  getToken(function(token) {
+    if (!token) { callback && callback(); return; }
+    getDigest(token, function(digest) {
+      if (!digest) { callback && callback(); return; }
+      var body = JSON.stringify(itemToSP(it));
+      var headers = {
+        'Authorization':  'Bearer ' + token,
+        'Accept':         'application/json;odata=verbose',
+        'Content-Type':   'application/json;odata=verbose',
+        'X-RequestDigest': digest
+      };
+      if (it.spId) {
+        headers['X-HTTP-Method'] = 'MERGE';
+        headers['IF-MATCH']      = '*';
+        fetch(SP_API + '(' + it.spId + ')', {
+          method: 'POST', headers: headers, body: body
+        }).then(function(){ callback && callback(); })
+          .catch(function(e){ console.error('SP update error:', e); callback && callback(); });
+      } else {
+        fetch(SP_API, { method: 'POST', headers: headers, body: body })
+          .then(function(r){ return r.json(); })
+          .then(function(d){ it.spId = d.d.Id; callback && callback(); })
+          .catch(function(e){ console.error('SP create error:', e); callback && callback(); });
+      }
+    });
   });
 }
 
 // ── Delete a single item ──────────────────────────────────────
 function spDeleteItem(spId, callback) {
-  if(spError || !spId){ callback && callback(); return; }
-  getDigest(function(digest){
-    if(!digest){ callback && callback(); return; }
-    fetch(SP_API + '(' + spId + ')', {
-      method: 'POST', credentials: 'include',
-      headers: {
-        'Accept':          'application/json;odata=verbose',
-        'Content-Type':    'application/json;odata=verbose',
-        'X-RequestDigest': digest,
-        'X-HTTP-Method':   'DELETE',
-        'IF-MATCH':        '*'
-      }
-    }).then(function(){ callback && callback(); })
-      .catch(function(){ callback && callback(); });
+  if (spError || !spId) { callback && callback(); return; }
+  getToken(function(token) {
+    if (!token) { callback && callback(); return; }
+    getDigest(token, function(digest) {
+      if (!digest) { callback && callback(); return; }
+      fetch(SP_API + '(' + spId + ')', {
+        method: 'POST',
+        headers: {
+          'Authorization':  'Bearer ' + token,
+          'Accept':         'application/json;odata=verbose',
+          'Content-Type':   'application/json;odata=verbose',
+          'X-RequestDigest': digest,
+          'X-HTTP-Method':  'DELETE',
+          'IF-MATCH':       '*'
+        }
+      }).then(function(){ callback && callback(); })
+        .catch(function(e){ console.error('SP delete error:', e); callback && callback(); });
+    });
   });
 }
 
-// ── Save all items (bulk sync) ────────────────────────────────
-function spSaveAll(callback) {
-  if(spError){ callback && callback(); return; }
-  var allItems = initiatives.concat(wipInitiatives);
-  var i = 0;
-  function next() {
-    if(i >= allItems.length){ callback && callback(); return; }
-    spSaveItem(allItems[i++], next);
-  }
-  next();
+function loadLocalFallback() {
+  try { var r=localStorage.getItem(DATA_KEY); initiatives=r?JSON.parse(r):[]; } catch(e){ initiatives=[]; }
+  try { var w=localStorage.getItem(WIP_KEY); wipInitiatives=w?JSON.parse(w):[]; } catch(e){ wipInitiatives=[]; }
+  updateCount(); renderBacklog();
 }
+
 
 
 /* =============================================================
@@ -1248,18 +1313,12 @@ var urgMap    = {1:'Sooner the better',2:'Int >6m',3:'Int <6m',5:'Ext >6m',7.5:'
 
 function load() {
   setStatus('loading');
-  spLoadAll(function(ok){
-    if(ok) {
-      setStatus('online');
-    } else {
-      // Fallback to localStorage if SP unreachable
-      try { var r=localStorage.getItem(DATA_KEY); initiatives=r?JSON.parse(r):[]; } catch(e){ initiatives=[]; }
-      try { var w=localStorage.getItem(WIP_KEY); wipInitiatives=w?JSON.parse(w):[]; } catch(e){ wipInitiatives=[]; }
-      setStatus('offline');
-    }
-    updateCount();
-    renderBacklog();
-  });
+  // Load local data immediately so UI is not blank while auth happens
+  try { var r=localStorage.getItem(DATA_KEY); initiatives=r?JSON.parse(r):[]; } catch(e){ initiatives=[]; }
+  try { var w=localStorage.getItem(WIP_KEY); wipInitiatives=w?JSON.parse(w):[]; } catch(e){ wipInitiatives=[]; }
+  updateCount(); renderBacklog();
+  // Then init MSAL and fetch from SharePoint
+  initMSAL();
 }
 function save() {
   // Always write to localStorage as backup
