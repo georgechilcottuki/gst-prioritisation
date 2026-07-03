@@ -550,6 +550,7 @@ var GRAPH_SCOPES  = ['https://graph.microsoft.com/Sites.ReadWrite.All'];
 var GRAPH_BASE    = 'https://graph.microsoft.com/v1.0';
 var _siteId       = null;
 var _listId       = null;
+var _resolvePending = null; // array of queued callbacks while a resolve is in flight, else null
 var _msalApp      = null;
 var _token        = null;
 var _tokenExpiry  = 0;
@@ -629,8 +630,15 @@ function getToken(callback) {
 // ── Resolve site ID and list ID (one-time) ───────────────────
 function resolveSiteAndList(callback) {
   if (_siteId && _listId) { callback(true); return; }
+  if (_resolvePending) { _resolvePending.push(callback); return; }
+  _resolvePending = [callback];
+  function finish(ok) {
+    var pending = _resolvePending;
+    _resolvePending = null;
+    pending.forEach(function(cb) { cb(ok); });
+  }
   getToken(function(token) {
-    if (!token) { callback(false); return; }
+    if (!token) { finish(false); return; }
     var headers = { 'Authorization': 'Bearer ' + token, 'Accept': 'application/json' };
     // Get site ID
     fetch(GRAPH_BASE + '/sites/' + SP_SITE_HOST + ':' + SP_SITE_PATH, { headers: headers })
@@ -646,11 +654,11 @@ function resolveSiteAndList(callback) {
         if (!lists.value || !lists.value.length) throw new Error('List not found: ' + SP_LIST_NAME);
         _listId = lists.value[0].id;
         console.log('List ID:', _listId);
-        callback(true);
+        finish(true);
       })
       .catch(function(e) {
         console.error('Site/list resolve error:', e);
-        callback(false);
+        finish(false);
       });
   });
 }
