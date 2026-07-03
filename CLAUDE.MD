@@ -46,3 +46,4 @@ Deployment: push to `main` → GitHub Pages auto-deploys via Actions.
 - Literal newlines inside JS string literals break the entire script — use \\n not a real newline
 - hasTBC() must call resolveScores() first so SP items with score=0 but valid text are handled correctly
 - setStatus() and showSignInButton() must be defined before the Graph module calls them — place at top of script
+- CSV row joins must use a real newline escape `'\n'`, not the two-character literal `'\\n'` — the latter compiles fine but produces backslash-n text instead of a line break, so the exported file renders as one line. saveBackupToSP() had the correct form; exportCSV() didn't.

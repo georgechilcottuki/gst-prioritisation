@@ -1380,7 +1380,7 @@ function exportCSV() {
       it.dateAdded,it.comments,obj.wip?'Yes':'No']
     .map(function(v){return'"'+String(v||'').replace(/"/g,'""')+'"';}).join(',');
   });
-  var csv=[cols.map(function(c){return'"'+c+'"';}).join(',')].concat(rows).join('\\n');
+  var csv=[cols.map(function(c){return'"'+c+'"';}).join(',')].concat(rows).join('\n');
   var a=document.createElement('a');
   a.href='data:text/csv;charset=utf-8,'+encodeURIComponent(csv);
   a.download='GST-Prioritisation-'+new Date().toISOString().split('T')[0]+'.csv';
