@@ -775,7 +775,7 @@ function spSaveItem(it, callback) {
   getToken(function(token) {
     if (!token) { callback && callback(); return; }
     resolveSiteAndList(function(ok) {
-      if (!ok) { callback && callback(); return; }
+      if (!ok) { spError = true; setStatus('offline'); callback && callback(); return; }
       var body = JSON.stringify(itemToGraph(it));
       var headers = {
         'Authorization': 'Bearer ' + token,
@@ -784,15 +784,15 @@ function spSaveItem(it, callback) {
       if (it.spId) {
         // PATCH existing item
         fetch(listItemUrl(it.spId), { method: 'PATCH', headers: headers, body: body })
-          .then(function() { callback && callback(); })
-          .catch(function(e) { console.error('Graph patch error:', e); callback && callback(); });
+          .then(function(r) { if (!r.ok) throw new Error('HTTP ' + r.status); callback && callback(); })
+          .catch(function(e) { console.error('Graph patch error:', e); spError = true; setStatus('offline'); callback && callback(); });
       } else {
         // POST new item
         var createUrl = GRAPH_BASE + '/sites/' + _siteId + '/lists/' + _listId + '/items';
         fetch(createUrl, { method: 'POST', headers: headers, body: body })
-          .then(function(r) { return r.json(); })
+          .then(function(r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
           .then(function(d) { it.spId = d.id; callback && callback(); })
-          .catch(function(e) { console.error('Graph create error:', e); callback && callback(); });
+          .catch(function(e) { console.error('Graph create error:', e); spError = true; setStatus('offline'); callback && callback(); });
       }
     });
   });
@@ -804,13 +804,13 @@ function spDeleteItem(spId, callback) {
   getToken(function(token) {
     if (!token) { callback && callback(); return; }
     resolveSiteAndList(function(ok) {
-      if (!ok) { callback && callback(); return; }
+      if (!ok) { spError = true; setStatus('offline'); callback && callback(); return; }
       fetch(listItemUrl(spId), {
         method: 'DELETE',
         headers: { 'Authorization': 'Bearer ' + token }
       })
-      .then(function() { callback && callback(); })
-      .catch(function(e) { console.error('Graph delete error:', e); callback && callback(); });
+      .then(function(r) { if (!r.ok && r.status !== 404) throw new Error('HTTP ' + r.status); callback && callback(); })
+      .catch(function(e) { console.error('Graph delete error:', e); spError = true; setStatus('offline'); callback && callback(); });
     });
   });
 }
@@ -1118,7 +1118,7 @@ function calc() {
   document.getElementById('sc-effort').textContent=effort;
   var anyTBC=[brand,invest,mm,vs,impact,comm,risk,urg,reason,effort].some(function(x){return x===0;});
   document.getElementById('sc-priority').textContent=anyTBC?'TBC':
-    ((brand+invest+urg+mm+vs+comm+risk)*(urg+reason)/effort).toFixed(2);
+    ((brand+invest+urg+mm+vs+impact+comm+risk)*(urg+reason)/effort).toFixed(2);
 }
 
 // ── Add initiative ────────────────────────────────────────────
@@ -1489,7 +1489,7 @@ function parseImportCSV(text, filename) {
     var mm      = mapLookup(SCORE_MAPS.mm,      mmTxt,     2);
     var vs      = mapLookup(SCORE_MAPS.vs,      vsTxt,     2);
     var impact  = mapLookup(SCORE_MAPS.impact,  impactTxt, 1);
-    var pp=(brand+invest+urg+mm+vs+comm+risk)*(urg+reason);
+    var pp=(brand+invest+urg+mm+vs+impact+comm+risk)*(urg+reason);
     pendingImport.push({
       id:Date.now()+Math.random(), initiative:name,
       brand:brandTxt, brandScore:brand,
