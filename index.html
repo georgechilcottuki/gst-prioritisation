@@ -232,6 +232,7 @@
         <div class="score-cell"><span class="sc-label">Commercial</span><span class="sc-val" id="sc-comm">TBC</span></div>
         <div class="score-cell"><span class="sc-label">Biz risk</span><span class="sc-val" id="sc-risk">TBC</span></div>
         <div class="score-cell"><span class="sc-label">Urgency</span><span class="sc-val" id="sc-urg">TBC</span></div>
+        <div class="score-cell"><span class="sc-label">Reason</span><span class="sc-val" id="sc-reason">TBC</span></div>
         <span class="score-op">÷</span>
         <div class="score-cell"><span class="sc-label">Effort</span><span class="sc-val" id="sc-effort">TBC</span></div>
         <span class="score-op">=</span>
@@ -1134,6 +1135,7 @@ function calc() {
   document.getElementById('sc-comm').textContent=comm;
   document.getElementById('sc-risk').textContent=risk;
   document.getElementById('sc-urg').textContent=urg;
+  document.getElementById('sc-reason').textContent=reason;
   document.getElementById('sc-effort').textContent=effort;
   var anyTBC=[brand,invest,mm,vs,impact,comm,risk,urg,reason,effort].some(function(x){return x===0;});
   document.getElementById('sc-priority').textContent=anyTBC?'TBC':
