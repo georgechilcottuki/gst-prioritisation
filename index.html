@@ -947,13 +947,25 @@ function hasTBC(it) {
     .some(function(v){ return Number(v) === 0; });
 }
 
+// Canonical priority formula — the ONLY place this calculation should live.
+// productPriority = (brand+invest+urgency+mission+vs+impact+commercial+risk) * (urgency+reason)
+// priority         = productPriority / effort
+// Every score-calculating call site (add form, edit form, CSV import, repair,
+// calcScore) must go through this function so they can't drift apart again —
+// that drift is exactly what caused 'impact' to go missing from two call
+// sites previously.
+function computePriority(brand, invest, urg, mm, vs, impact, comm, risk, reason, effort) {
+  var productPriority = (brand+invest+urg+mm+vs+impact+comm+risk) * (urg+reason);
+  return { productPriority: productPriority, priority: effort ? productPriority/effort : 0 };
+}
+
 function calcScore(it) {
   resolveScores(it); // always resolve before calculating
-  var pp = (it.brandScore+it.investScore+it.urgScore+it.mmScore+it.vsScore+it.impactScore+it.commScore+it.riskScore)
-           * (it.urgScore+it.reasonScore);
-  it.productPriority = pp;
-  it.priority = pp / it.effortScore;
-  return { pp: pp, pri: it.priority };
+  var score = computePriority(it.brandScore, it.investScore, it.urgScore, it.mmScore, it.vsScore,
+    it.impactScore, it.commScore, it.riskScore, it.reasonScore, it.effortScore);
+  it.productPriority = score.productPriority;
+  it.priority = score.priority;
+  return { pp: score.productPriority, pri: score.priority };
 }
 
 // ── Persistence ──────────────────────────────────────────────
@@ -1013,8 +1025,7 @@ function repairAll() {
       console.warn('  reason:', JSON.stringify(it.reason), '-> score:', it.reasonScore);
       console.warn('  effort:', JSON.stringify(it.effort), '-> score:', it.effortScore);
     } else {
-      it.productPriority=(it.brandScore+it.investScore+it.urgScore+it.mmScore+it.vsScore+it.impactScore+it.commScore+it.riskScore)*(it.urgScore+it.reasonScore);
-      it.priority=it.productPriority/it.effortScore;
+      calcScore(it);
     }
   });
   wipInitiatives.forEach(function(it){ it.isWip=true; resolveScores(it); });
@@ -1126,7 +1137,7 @@ function calc() {
   document.getElementById('sc-effort').textContent=effort;
   var anyTBC=[brand,invest,mm,vs,impact,comm,risk,urg,reason,effort].some(function(x){return x===0;});
   document.getElementById('sc-priority').textContent=anyTBC?'TBC':
-    ((brand+invest+urg+mm+vs+impact+comm+risk)*(urg+reason)/effort).toFixed(2);
+    computePriority(brand,invest,urg,mm,vs,impact,comm,risk,reason,effort).priority.toFixed(2);
 }
 
 // ── Add initiative ────────────────────────────────────────────
@@ -1137,7 +1148,7 @@ function addInitiative() {
       impact=vv('f-impact'),comm=vv('f-commercial'),risk=vv('f-biz-risk'),
       urg=vv('f-urgency'),reason=vv('f-reason'),effort=vv('f-effort');
   var anyTBC=[brand,invest,mm,vs,impact,comm,risk,urg,reason,effort].some(function(x){return x===0;});
-  var pp=anyTBC?0:(brand+invest+urg+mm+vs+impact+comm+risk)*(urg+reason);
+  var score=anyTBC?{productPriority:0,priority:0}:computePriority(brand,invest,urg,mm,vs,impact,comm,risk,reason,effort);
   // Store both text label AND numeric score for every field
   var brandEl=document.getElementById('f-brand');
   var it={
@@ -1156,7 +1167,7 @@ function addInitiative() {
     urgency:sel('f-urgency'), urgScore:urg,
     reason:sel('f-reason'), reasonScore:reason,
     effort:sel('f-effort'), effortScore:effort,
-    productPriority:pp, priority:anyTBC?0:pp/effort,
+    productPriority:score.productPriority, priority:score.priority,
     dateAdded:new Date().toISOString().split('T')[0]
   };
   if(hasTBC(it)){
@@ -1497,7 +1508,7 @@ function parseImportCSV(text, filename) {
     var mm      = mapLookup(SCORE_MAPS.mm,      mmTxt,     2);
     var vs      = mapLookup(SCORE_MAPS.vs,      vsTxt,     2);
     var impact  = mapLookup(SCORE_MAPS.impact,  impactTxt, 1);
-    var pp=(brand+invest+urg+mm+vs+impact+comm+risk)*(urg+reason);
+    var score=computePriority(brand,invest,urg,mm,vs,impact,comm,risk,reason,effort);
     pendingImport.push({
       id:Date.now()+Math.random(), initiative:name,
       brand:brandTxt, brandScore:brand,
@@ -1515,7 +1526,7 @@ function parseImportCSV(text, filename) {
       urgency:urgTxt, urgScore:urg,
       reason:reasonTxt, reasonScore:reason,
       effort:effortTxt, effortScore:effort,
-      productPriority:pp, priority:pp/effort,
+      productPriority:score.productPriority, priority:score.priority,
       dateAdded:new Date().toISOString().split('T')[0]
     });
   });
@@ -1699,9 +1710,9 @@ function editCalc() {
       vs=vv('edit-vsmetric'),impact=vv('edit-impact'),comm=vv('edit-commercial'),risk=vv('edit-bizrisk'),
       urg=vv('edit-urgency'),reason=vv('edit-reason'),effort=vv('edit-effort');
   var anyTBC=[brand,invest,mm,vs,impact,comm,risk,urg,reason,effort].some(function(x){return x===0;});
-  var pp=anyTBC?0:(brand+invest+urg+mm+vs+impact+comm+risk)*(urg+reason);
-  document.getElementById('edit-product-score').textContent=anyTBC?'TBC':pp.toFixed(2);
-  document.getElementById('edit-effort-score').textContent=anyTBC?'TBC':(pp/effort).toFixed(2);
+  var score=anyTBC?null:computePriority(brand,invest,urg,mm,vs,impact,comm,risk,reason,effort);
+  document.getElementById('edit-product-score').textContent=score?score.productPriority.toFixed(2):'TBC';
+  document.getElementById('edit-effort-score').textContent=score?score.priority.toFixed(2):'TBC';
 }
 
 function saveDetail() {
@@ -1735,8 +1746,9 @@ function saveDetail() {
   it.reason=rsE.options[rsE.selectedIndex].text;         it.reasonScore=parseFloat(rsE.value);
   it.effort=eE.options[eE.selectedIndex].text;           it.effortScore=parseFloat(eE.value);
   var anyTBC=hasTBC(it);
-  it.productPriority=anyTBC?0:(it.brandScore+it.investScore+it.urgScore+it.mmScore+it.vsScore+it.impactScore+it.commScore+it.riskScore)*(it.urgScore+it.reasonScore);
-  it.priority=anyTBC?0:it.productPriority/it.effortScore;
+  var score=anyTBC?{productPriority:0,priority:0}:computePriority(it.brandScore,it.investScore,it.urgScore,it.mmScore,it.vsScore,it.impactScore,it.commScore,it.riskScore,it.reasonScore,it.effortScore);
+  it.productPriority=score.productPriority;
+  it.priority=score.priority;
   if(isWip){
     if(anyTBC){it.isWip=true;saveItem(it);renderWIP();showToast('Changes saved \u2713');showDetail(id,true);}
     else{it.isWip=false;
