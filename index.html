@@ -344,7 +344,7 @@
           <a href="#" onclick="setImportSection('dup',false);return false" style="color:var(--ink-light)">Select none</a>
         </span>
       </div>
-      <div style="background:var(--amber-light);border:1px solid #fde68a;border-radius:var(--radius);padding:0.5rem 0.75rem;font-size:11px;color:var(--amber);margin-bottom:0.5rem">Matched by initiative name. Checked rows that match an existing backlog/WIP item will update that item in place; checked rows that duplicate another row in this file will be added as separate items. Unchecked rows are skipped.</div>
+      <div style="background:var(--amber-light);border:1px solid #fde68a;border-radius:var(--radius);padding:0.5rem 0.75rem;font-size:11px;color:var(--amber);margin-bottom:0.5rem">Matched by initiative name against your existing backlog/WIP, or against another row in this file. Checked rows are added as new entries anyway; unchecked rows are skipped.</div>
       <div style="border:1px solid var(--rule);border-radius:var(--radius);max-height:220px;overflow-y:auto">
         <table style="width:100%;border-collapse:collapse;font-size:12px" id="import-dup-table"></table>
       </div>
@@ -1146,6 +1146,12 @@ function esc(s){return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').repl
 function vv(id){return parseFloat(document.getElementById(id).value);}
 function tt(id){return document.getElementById(id).value.trim();}
 function sel(id){var el=document.getElementById(id);return el.options[el.selectedIndex].text;}
+// dd/mm/yy hh:mm:ss timestamp — used for dateAdded so it's clear exactly when an item was added, not just the day
+function nowStamp(){
+  var d=new Date();
+  function p(n){return String(n).padStart(2,'0');}
+  return p(d.getDate())+'/'+p(d.getMonth()+1)+'/'+String(d.getFullYear()).slice(-2)+' '+p(d.getHours())+':'+p(d.getMinutes())+':'+p(d.getSeconds());
+}
 
 // ── Live score (add form) ─────────────────────────────────────
 function calc() {
@@ -1195,7 +1201,7 @@ function addInitiative() {
     reason:sel('f-reason'), reasonScore:reason,
     effort:sel('f-effort'), effortScore:effort,
     productPriority:score.productPriority, priority:score.priority,
-    dateAdded:new Date().toISOString().split('T')[0]
+    dateAdded:nowStamp()
   };
   if(hasTBC(it)){
     it.isWip=true;
@@ -1569,7 +1575,7 @@ function parseImportCSV(text, filename) {
       reason:reasonTxt, reasonScore:reason,
       effort:effortTxt, effortScore:effort,
       productPriority:score.productPriority, priority:score.priority,
-      dateAdded:new Date().toISOString().split('T')[0]
+      dateAdded:nowStamp()
     });
   });
 
@@ -1587,7 +1593,7 @@ function parseImportCSV(text, filename) {
 
 function importRowHtml(it, idx) {
   var note='';
-  if(it._dupType==='existing') note='<div style="font-size:10px;color:var(--amber)">Matches existing item \u2014 will update it: '+esc(it._dupName)+'</div>';
+  if(it._dupType==='existing') note='<div style="font-size:10px;color:var(--amber)">Matches existing item: '+esc(it._dupName)+'</div>';
   else if(it._dupType==='batch') note='<div style="font-size:10px;color:var(--amber)">Duplicate of another row in this file: '+esc(it._dupName)+'</div>';
   return '<tr>'+
     '<td style="padding:5px 8px;width:26px"><input type="checkbox" '+(it._include?'checked':'')+' onchange="toggleImportRow('+idx+',this.checked)"></td>'+
@@ -1639,45 +1645,25 @@ function confirmImport(){
   var toApply=pendingImport.filter(function(p){return p._include;});
   if(!toApply.length){showToast('Nothing selected to import.');return;}
   pendingImport=[];
-  var affected=[];
-  toApply.forEach(function(row){
-    if(row._dupType==='existing'){
-      var target=initiatives.find(function(i){return i.id===row._dupId;})||wipInitiatives.find(function(i){return i.id===row._dupId;});
-      if(!target){ initiatives.push(row); affected.push(row); return; }
-      var wasWip=wipInitiatives.indexOf(target)>-1;
-      var keepId=target.id, keepSpId=target.spId, keepDateAdded=target.dateAdded;
-      Object.keys(row).forEach(function(k){ if(k.indexOf('_')!==0) target[k]=row[k]; });
-      target.id=keepId; target.spId=keepSpId; target.dateAdded=keepDateAdded;
-      var stillTBC=hasTBC(target);
-      if(!stillTBC) calcScore(target);
-      if(stillTBC&&!wasWip){
-        initiatives=initiatives.filter(function(i){return i.id!==keepId;});
-        target.isWip=true; wipInitiatives.push(target);
-      } else if(!stillTBC&&wasWip){
-        wipInitiatives=wipInitiatives.filter(function(i){return i.id!==keepId;});
-        target.isWip=false; initiatives.push(target);
-      }
-      affected.push(target);
-    } else {
-      initiatives.push(row);
-      affected.push(row);
-    }
+  toApply.forEach(function(it){
+    delete it._dupType; delete it._dupId; delete it._dupName; delete it._include;
+    initiatives.push(it);
   });
   save();
-  updateCount();renderBacklog();renderWIP();closeImportModal();showTab('backlog');
-  var si=0, total=affected.length;
+  updateCount();renderBacklog();closeImportModal();showTab('backlog');
+  var si=0, total=toApply.length;
   setStatus('loading');
   showOverlay('Uploading to SharePoint…','Item 1 of '+total+' — please wait');
   function nextSave(){
     if(si>=total){
       hideOverlay();
       setStatus('online');
-      showToast('Applied '+total+' item'+(total===1?'':'s')+' ✓');
+      showToast('Added '+total+' item'+(total===1?'':'s')+' ✓');
       return;
     }
     document.getElementById('sp-overlay-text').textContent='Uploading to SharePoint…';
     document.getElementById('sp-overlay-sub').textContent='Item '+(si+1)+' of '+total+' — please wait';
-    spSaveItem(affected[si++],nextSave);
+    spSaveItem(toApply[si++],nextSave);
   }
   nextSave();
 }
