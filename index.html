@@ -318,13 +318,38 @@
 
 <!-- Import modal -->
 <div class="modal-backdrop" id="import-modal">
-  <div class="modal" style="max-width:560px">
+  <div class="modal" style="max-width:720px;max-height:88vh;overflow-y:auto">
     <h3>Import CSV</h3>
     <p id="import-summary">Reviewing file…</p>
-    <div id="import-preview" style="background:var(--surface);border:1px solid var(--rule);border-radius:var(--radius);padding:0.75rem 1rem;margin-bottom:1.25rem;font-size:12px;max-height:180px;overflow-y:auto;display:none">
-      <table style="width:100%;border-collapse:collapse" id="import-preview-table"></table>
+    <div id="import-warning" style="background:var(--amber-light);border:1px solid #fde68a;border-radius:var(--radius);padding:0.6rem 0.9rem;font-size:12px;color:var(--amber);margin-bottom:1rem;display:none"></div>
+
+    <div id="import-new-section" style="margin-bottom:1.25rem;display:none">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:0.5rem">
+        <span style="font-size:11px;font-weight:600;letter-spacing:0.06em;text-transform:uppercase;color:var(--ink-light)">New items <span class="count-badge" id="import-new-count">0</span></span>
+        <span style="font-size:11px;display:flex;gap:10px">
+          <a href="#" onclick="setImportSection('new',true);return false" style="color:var(--accent)">Select all</a>
+          <a href="#" onclick="setImportSection('new',false);return false" style="color:var(--ink-light)">Select none</a>
+        </span>
+      </div>
+      <div style="border:1px solid var(--rule);border-radius:var(--radius);max-height:220px;overflow-y:auto">
+        <table style="width:100%;border-collapse:collapse;font-size:12px" id="import-new-table"></table>
+      </div>
     </div>
-    <div style="background:var(--amber-light);border:1px solid #fde68a;border-radius:var(--radius);padding:0.6rem 0.9rem;font-size:12px;color:var(--amber);margin-bottom:1.25rem;display:none" id="import-warning"></div>
+
+    <div id="import-dup-section" style="margin-bottom:1.25rem;display:none">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:0.5rem">
+        <span style="font-size:11px;font-weight:600;letter-spacing:0.06em;text-transform:uppercase;color:var(--amber)">Possible duplicates <span class="count-badge" style="background:var(--amber-light);color:var(--amber)" id="import-dup-count">0</span></span>
+        <span style="font-size:11px;display:flex;gap:10px">
+          <a href="#" onclick="setImportSection('dup',true);return false" style="color:var(--accent)">Select all</a>
+          <a href="#" onclick="setImportSection('dup',false);return false" style="color:var(--ink-light)">Select none</a>
+        </span>
+      </div>
+      <div style="background:var(--amber-light);border:1px solid #fde68a;border-radius:var(--radius);padding:0.5rem 0.75rem;font-size:11px;color:var(--amber);margin-bottom:0.5rem">Matched by initiative name. Checked rows that match an existing backlog/WIP item will update that item in place; checked rows that duplicate another row in this file will be added as separate items. Unchecked rows are skipped.</div>
+      <div style="border:1px solid var(--rule);border-radius:var(--radius);max-height:220px;overflow-y:auto">
+        <table style="width:100%;border-collapse:collapse;font-size:12px" id="import-dup-table"></table>
+      </div>
+    </div>
+
     <div class="modal-actions">
       <button class="btn btn-ghost" onclick="closeImportModal()">Cancel</button>
       <button class="btn btn-primary" id="import-confirm-btn" onclick="confirmImport()">Add to backlog</button>
@@ -1410,6 +1435,13 @@ function exportCSV() {
 
 // ── CSV import ────────────────────────────────────────────────
 var pendingImport=[];
+// Duplicate detection matches on normalised initiative name against the current backlog+WIP.
+function findBacklogMatchByName(name) {
+  var n = normStr(name);
+  var all = initiatives.concat(wipInitiatives);
+  for (var i=0;i<all.length;i++) { if (normStr(all[i].initiative) === n) return all[i]; }
+  return null;
+}
 function triggerImport(){var el=document.getElementById('csv-file-input');el.value='';el.click();}
 function handleCSVUpload(event){
   var file=event.target.files[0];if(!file)return;
@@ -1511,8 +1543,16 @@ function parseImportCSV(text, filename) {
     var vs      = mapLookup(SCORE_MAPS.vs,      vsTxt,     2);
     var impact  = mapLookup(SCORE_MAPS.impact,  impactTxt, 1);
     var score=computePriority(brand,invest,urg,mm,vs,impact,comm,risk,reason,effort);
+    // Duplicate check: first against the existing backlog/WIP, then against rows already seen in this file
+    var existingMatch = findBacklogMatchByName(name);
+    var batchMatch = existingMatch ? null : pendingImport.find(function(p){ return normStr(p.initiative) === normStr(name); });
+    var dupType = existingMatch ? 'existing' : (batchMatch ? 'batch' : null);
     pendingImport.push({
       id:Date.now()+Math.random(), initiative:name,
+      _dupType: dupType,
+      _dupId: existingMatch ? existingMatch.id : null,
+      _dupName: existingMatch ? existingMatch.initiative : (batchMatch ? batchMatch.initiative : null),
+      _include: !dupType,
       brand:brandTxt, brandScore:brand,
       valuestream:getCell(row,'valuestream'),
       investtype:investTxt, investScore:invest,
@@ -1534,42 +1574,110 @@ function parseImportCSV(text, filename) {
   });
 
   if(!pendingImport.length){showToast('No valid rows found in the CSV.');return;}
+  var newCount=pendingImport.filter(function(p){return !p._dupType;}).length;
+  var dupCount=pendingImport.length-newCount;
   var summary=document.getElementById('import-summary');
-  summary.textContent='Found '+pendingImport.length+' initiative'+(pendingImport.length===1?'':'s')+' in "'+filename+'". These will be added to your existing backlog.';
+  summary.textContent='Found '+pendingImport.length+' row'+(pendingImport.length===1?'':'s')+' in "'+filename+'" \u2014 '+newCount+' new, '+dupCount+' possible duplicate'+(dupCount===1?'':'s')+'. Review the selections below before confirming.';
   var warning=document.getElementById('import-warning');
-  if(skipped>0){warning.textContent=skipped+' row'+(skipped===1?' was':' were')+' skipped.';warning.style.display='block';}
+  if(skipped>0){warning.textContent=skipped+' row'+(skipped===1?' was':' were')+' skipped (missing initiative name).';warning.style.display='block';}
   else{warning.style.display='none';}
-  var tbl='<tr style="border-bottom:1px solid var(--rule)"><th style="text-align:left;padding:4px 8px;font-size:11px;color:var(--ink-light)">Initiative</th><th style="text-align:left;padding:4px 8px;font-size:11px;color:var(--ink-light)">Tribe</th><th style="text-align:right;padding:4px 8px;font-size:11px;color:var(--ink-light)">Score</th></tr>';
-  pendingImport.slice(0,5).forEach(function(it){
-    tbl+='<tr><td style="padding:4px 8px">'+esc(it.initiative)+'</td><td style="padding:4px 8px;color:var(--ink-mid)">'+esc(it.tribe||'\u2014')+'</td><td style="padding:4px 8px;text-align:right;font-weight:600;color:var(--accent)">'+it.priority.toFixed(2)+'</td></tr>';
-  });
-  if(pendingImport.length>5){tbl+='<tr><td colspan="3" style="padding:4px 8px;color:var(--ink-light);font-style:italic">\u2026and '+(pendingImport.length-5)+' more</td></tr>';}
-  document.getElementById('import-preview-table').innerHTML=tbl;
-  document.getElementById('import-preview').style.display='block';
-  document.getElementById('import-confirm-btn').textContent='Add '+pendingImport.length+' to backlog';
+  renderImportPreview();
   document.getElementById('import-modal').classList.add('open');
 }
 
+function importRowHtml(it, idx) {
+  var note='';
+  if(it._dupType==='existing') note='<div style="font-size:10px;color:var(--amber)">Matches existing item \u2014 will update it: '+esc(it._dupName)+'</div>';
+  else if(it._dupType==='batch') note='<div style="font-size:10px;color:var(--amber)">Duplicate of another row in this file: '+esc(it._dupName)+'</div>';
+  return '<tr>'+
+    '<td style="padding:5px 8px;width:26px"><input type="checkbox" '+(it._include?'checked':'')+' onchange="toggleImportRow('+idx+',this.checked)"></td>'+
+    '<td style="padding:5px 8px">'+esc(it.initiative)+note+'</td>'+
+    '<td style="padding:5px 8px;color:var(--ink-mid)">'+esc(it.tribe||'\u2014')+'</td>'+
+    '<td style="padding:5px 8px;text-align:right;font-weight:600;color:var(--accent)">'+it.priority.toFixed(2)+'</td>'+
+  '</tr>';
+}
+
+function renderImportPreview() {
+  var header='<tr style="border-bottom:1px solid var(--rule)"><th style="width:26px"></th><th style="text-align:left;padding:5px 8px;font-size:11px;color:var(--ink-light)">Initiative</th><th style="text-align:left;padding:5px 8px;font-size:11px;color:var(--ink-light)">Tribe</th><th style="text-align:right;padding:5px 8px;font-size:11px;color:var(--ink-light)">Score</th></tr>';
+  var newRows=[], dupRows=[];
+  pendingImport.forEach(function(it,idx){ (it._dupType?dupRows:newRows).push(importRowHtml(it,idx)); });
+
+  var newSection=document.getElementById('import-new-section');
+  if(newRows.length){
+    document.getElementById('import-new-count').textContent=newRows.length;
+    document.getElementById('import-new-table').innerHTML=header+newRows.join('');
+    newSection.style.display='block';
+  } else { newSection.style.display='none'; }
+
+  var dupSection=document.getElementById('import-dup-section');
+  if(dupRows.length){
+    document.getElementById('import-dup-count').textContent=dupRows.length;
+    document.getElementById('import-dup-table').innerHTML=header+dupRows.join('');
+    dupSection.style.display='block';
+  } else { dupSection.style.display='none'; }
+
+  var includeCount=pendingImport.filter(function(p){return p._include;}).length;
+  var btn=document.getElementById('import-confirm-btn');
+  btn.textContent=includeCount>0?('Apply '+includeCount+' item'+(includeCount===1?'':'s')):'Nothing selected';
+  btn.disabled=includeCount===0;
+}
+
+function toggleImportRow(idx, checked) {
+  pendingImport[idx]._include=checked;
+  renderImportPreview();
+}
+
+function setImportSection(section, checked) {
+  pendingImport.forEach(function(it){
+    var isDup=!!it._dupType;
+    if((section==='new'&&!isDup)||(section==='dup'&&isDup)) it._include=checked;
+  });
+  renderImportPreview();
+}
+
 function confirmImport(){
-  var toImport=pendingImport.slice();
+  var toApply=pendingImport.filter(function(p){return p._include;});
+  if(!toApply.length){showToast('Nothing selected to import.');return;}
   pendingImport=[];
-  var total=toImport.length;
-  toImport.forEach(function(it){initiatives.push(it);});
+  var affected=[];
+  toApply.forEach(function(row){
+    if(row._dupType==='existing'){
+      var target=initiatives.find(function(i){return i.id===row._dupId;})||wipInitiatives.find(function(i){return i.id===row._dupId;});
+      if(!target){ initiatives.push(row); affected.push(row); return; }
+      var wasWip=wipInitiatives.indexOf(target)>-1;
+      var keepId=target.id, keepSpId=target.spId, keepDateAdded=target.dateAdded;
+      Object.keys(row).forEach(function(k){ if(k.indexOf('_')!==0) target[k]=row[k]; });
+      target.id=keepId; target.spId=keepSpId; target.dateAdded=keepDateAdded;
+      var stillTBC=hasTBC(target);
+      if(!stillTBC) calcScore(target);
+      if(stillTBC&&!wasWip){
+        initiatives=initiatives.filter(function(i){return i.id!==keepId;});
+        target.isWip=true; wipInitiatives.push(target);
+      } else if(!stillTBC&&wasWip){
+        wipInitiatives=wipInitiatives.filter(function(i){return i.id!==keepId;});
+        target.isWip=false; initiatives.push(target);
+      }
+      affected.push(target);
+    } else {
+      initiatives.push(row);
+      affected.push(row);
+    }
+  });
   save();
-  updateCount();renderBacklog();closeImportModal();showTab('backlog');
-  var si=0;
+  updateCount();renderBacklog();renderWIP();closeImportModal();showTab('backlog');
+  var si=0, total=affected.length;
   setStatus('loading');
   showOverlay('Uploading to SharePoint…','Item 1 of '+total+' — please wait');
   function nextSave(){
     if(si>=total){
       hideOverlay();
       setStatus('online');
-      showToast('Saved '+total+' item'+(total===1?'':'s')+' to SharePoint ✓');
+      showToast('Applied '+total+' item'+(total===1?'':'s')+' ✓');
       return;
     }
     document.getElementById('sp-overlay-text').textContent='Uploading to SharePoint…';
     document.getElementById('sp-overlay-sub').textContent='Item '+(si+1)+' of '+total+' — please wait';
-    spSaveItem(toImport[si++],nextSave);
+    spSaveItem(affected[si++],nextSave);
   }
   nextSave();
 }
