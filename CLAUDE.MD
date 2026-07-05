@@ -6,6 +6,7 @@ The app connects to a SharePoint List called "GST Prioritisation" on betfairprod
 
 Key files:
 - `index.html` — the entire app (HTML + CSS + JS, self-contained)
+- `.nojekyll` — empty marker file telling GitHub Pages to skip Jekyll processing. This is a plain static site with no Jekyll dependency; don't remove this file.
 
 Deployment: push to `main` → GitHub Pages auto-deploys via Actions.
 
