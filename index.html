@@ -1095,11 +1095,7 @@ function saveBackupToSP(reason, callback) {
     var csv = [cols.map(function(c){ return '"'+c+'"'; }).join(',')].concat(rows).join('\n');
     // Base64 encode
     var b64 = btoa(unescape(encodeURIComponent(csv)));
-    // Timestamp for filename
-    var now = new Date();
-    var ts = now.getFullYear()+'-'+String(now.getMonth()+1).padStart(2,'0')+'-'+String(now.getDate()).padStart(2,'0')
-      + 'T' + String(now.getHours()).padStart(2,'0')+'-'+String(now.getMinutes()).padStart(2,'0');
-    var filename = 'backup-' + ts + '-' + (reason||'manual') + '.csv';
+    var filename = 'backup-' + fileTimestamp() + '-' + (reason||'manual') + '.csv';
     // Upload to SharePoint Backups folder via Graph
     var uploadUrl = 'https://graph.microsoft.com/v1.0/sites/' + _siteId
       + '/drive/root:/GST-Backups/' + encodeURIComponent(filename) + ':/content';
@@ -1151,6 +1147,12 @@ function nowStamp(){
   var d=new Date();
   function p(n){return String(n).padStart(2,'0');}
   return p(d.getDate())+'/'+p(d.getMonth()+1)+'/'+String(d.getFullYear()).slice(-2)+' '+p(d.getHours())+':'+p(d.getMinutes())+':'+p(d.getSeconds());
+}
+// Filesystem-safe date/time stamp (seconds precision) for export/backup filenames, so repeat exports don't collide
+function fileTimestamp(){
+  var d=new Date();
+  function p(n){return String(n).padStart(2,'0');}
+  return d.getFullYear()+'-'+p(d.getMonth()+1)+'-'+p(d.getDate())+'_'+p(d.getHours())+p(d.getMinutes())+p(d.getSeconds());
 }
 
 // ── Live score (add form) ─────────────────────────────────────
@@ -1435,7 +1437,7 @@ function exportCSV() {
   var csv=[cols.map(function(c){return'"'+c+'"';}).join(',')].concat(rows).join('\n');
   var a=document.createElement('a');
   a.href='data:text/csv;charset=utf-8,'+encodeURIComponent(csv);
-  a.download='GST-Prioritisation-'+new Date().toISOString().split('T')[0]+'.csv';
+  a.download='GST-Prioritisation-'+fileTimestamp()+'.csv';
   a.click();showToast('CSV exported \u2713');
 }
 
