@@ -697,6 +697,12 @@ function listItemsUrl() {
 function listItemUrl(spId) {
   return GRAPH_BASE + '/sites/' + _siteId + '/lists/' + _listId + '/items/' + spId;
 }
+// Updating column values requires PATCHing the /fields sub-resource directly with the
+// raw fields object — PATCHing /items/{id} itself with a {fields:{...}} body is accepted
+// by Graph (200 OK) but silently does not update any SharePoint column.
+function listItemFieldsUrl(spId) {
+  return listItemUrl(spId) + '/fields';
+}
 
 // ── Map app item → Graph fields ───────────────────────────────
 function itemToGraph(it) {
@@ -811,20 +817,21 @@ function spSaveItem(it, callback) {
     if (!token) { callback && callback(); return; }
     resolveSiteAndList(function(ok) {
       if (!ok) { spError = true; setStatus('offline'); callback && callback(); return; }
-      var body = JSON.stringify(itemToGraph(it));
+      var graph = itemToGraph(it);
       var headers = {
         'Authorization': 'Bearer ' + token,
         'Content-Type':  'application/json'
       };
       if (it.spId) {
-        // PATCH existing item
-        fetch(listItemUrl(it.spId), { method: 'PATCH', headers: headers, body: body })
+        // PATCH the /fields sub-resource directly with the raw fields object — this is
+        // the endpoint+shape Graph actually requires to persist column value updates
+        fetch(listItemFieldsUrl(it.spId), { method: 'PATCH', headers: headers, body: JSON.stringify(graph.fields) })
           .then(function(r) { if (!r.ok) throw new Error('HTTP ' + r.status); callback && callback(); })
           .catch(function(e) { console.error('Graph patch error:', e); spError = true; setStatus('offline'); callback && callback(); });
       } else {
-        // POST new item
+        // POST new item — Graph's create endpoint does take the full {fields:{...}} shape
         var createUrl = GRAPH_BASE + '/sites/' + _siteId + '/lists/' + _listId + '/items';
-        fetch(createUrl, { method: 'POST', headers: headers, body: body })
+        fetch(createUrl, { method: 'POST', headers: headers, body: JSON.stringify(graph) })
           .then(function(r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
           .then(function(d) { it.spId = d.id; callback && callback(); })
           .catch(function(e) { console.error('Graph create error:', e); spError = true; setStatus('offline'); callback && callback(); });
