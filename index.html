@@ -1862,7 +1862,7 @@ function saveDetail() {
       saveItem(it);updateCount();renderBacklog();renderWIP();
       document.getElementById('detail-modal').classList.remove('open');
       showToast(it.initiative+' moved to WIP \u2014 some fields are TBC');showTab('wip');}
-    else{save();renderBacklog();showToast('Changes saved \u2713');showDetail(id,false);}
+    else{saveItem(it);renderBacklog();showToast('Changes saved \u2713');showDetail(id,false);}
   }
 }
 
