@@ -1075,9 +1075,9 @@ function repairAll() {
   nextRepair();
 }
 function saveBackupToSP(reason, callback) {
-  if (!spReady || !_siteId) { callback && callback(); return; }
+  if (!spReady || !_siteId) { showToast('⚠ Not connected to SharePoint — no backup taken before this change'); callback && callback(); return; }
   getToken(function(token) {
-    if (!token) { callback && callback(); return; }
+    if (!token) { showToast('⚠ Could not get a SharePoint token — no backup taken before this change'); callback && callback(); return; }
     // Build CSV content
     var cols = ['Rank','Initiative','Brand','Value Stream','Investment Type','Status','Tribe',
       'Sponsor','Owner','Go Live','Mission Metric','VS Metric','Impact','Commercial Opp',
@@ -1116,11 +1116,13 @@ function saveBackupToSP(reason, callback) {
         showToast('Backup saved: ' + filename);
       } else {
         console.error('Backup failed:', r.status);
+        showToast('⚠ Backup to SharePoint failed (HTTP ' + r.status + ') — proceeding anyway');
       }
       callback && callback();
     })
     .catch(function(e) {
       console.error('Backup error:', e);
+      showToast('⚠ Backup to SharePoint failed — proceeding anyway');
       callback && callback();
     });
   });
