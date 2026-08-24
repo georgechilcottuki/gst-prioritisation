@@ -261,7 +261,7 @@
           <div style="display:flex;gap:8px">
             <button class="btn btn-ghost" onclick="triggerImport()">↑ Upload CSV</button>
             <button class="btn btn-success" onclick="exportCSV()">↓ Export CSV</button>
-            <button class="btn btn-danger" onclick="askClearAll()">Clear all</button>
+            <button class="btn btn-danger" onclick="askDeleteAll()">Delete all</button>
           </div>
         </div>
       </div>
@@ -358,14 +358,16 @@
   </div>
 </div>
 
-<!-- Clear all modal -->
-<div class="modal-backdrop" id="clear-modal">
+<!-- Delete all modal -->
+<div class="modal-backdrop" id="delete-all-modal">
   <div class="modal">
-    <h3>Clear entire backlog?</h3>
-    <p>This will permanently remove all initiatives. This cannot be undone.</p>
+    <h3>Delete entire backlog?</h3>
+    <div style="background:var(--red-light);border:1px solid #fecaca;border-radius:var(--radius);padding:0.75rem 1rem;font-size:13px;color:var(--red);margin-bottom:1.25rem">
+      <strong>This cannot be undone.</strong> All initiatives currently shown will be permanently deleted, from the backlog and from SharePoint.
+    </div>
     <div class="modal-actions">
-      <button class="btn btn-ghost" onclick="document.getElementById('clear-modal').classList.remove('open')">Cancel</button>
-      <button class="btn btn-danger" onclick="confirmClearAll()">Clear all</button>
+      <button class="btn btn-ghost" onclick="document.getElementById('delete-all-modal').classList.remove('open')">Cancel</button>
+      <button class="btn btn-danger" onclick="confirmDeleteAll()">Delete all</button>
     </div>
   </div>
 </div>
@@ -1380,18 +1382,18 @@ function confirmDelete() {
   });
 }
 
-// ── Clear all ─────────────────────────────────────────────────
-function askClearAll(){document.getElementById('clear-modal').classList.add('open');}
-function confirmClearAll() {
-  // Save backup before clearing
+// ── Delete all ─────────────────────────────────────────────────
+function askDeleteAll(){document.getElementById('delete-all-modal').classList.add('open');}
+function confirmDeleteAll() {
+  // Save backup before deleting
   saveBackupToSP('clear-all', function() {
     var toDel=document.getElementById('tab-wip').style.display==='block'?wipInitiatives.slice():initiatives.slice();
     if(document.getElementById('tab-wip').style.display==='block'){wipInitiatives=[];}
     else{initiatives=[];}
     save();toDel.forEach(function(it){if(it.spId)spDeleteItem(it.spId);});
     updateCount();renderBacklog();renderWIP();
-    document.getElementById('clear-modal').classList.remove('open');
-    showToast('Cleared.');
+    document.getElementById('delete-all-modal').classList.remove('open');
+    showToast('Backlog deleted.');
   });
 }
 
