@@ -154,6 +154,7 @@
     <button class="tab-btn active" id="tab-form-btn" onclick="showTab('form')">Add initiative</button>
     <button class="tab-btn" id="tab-backlog-btn" onclick="showTab('backlog')">Backlog <span class="count-badge" id="count-badge">0</span></button>
     <button class="tab-btn" id="tab-wip-btn" onclick="showTab('wip')">WIP <span class="count-badge" style="background:var(--amber-light);color:var(--amber)" id="wip-count-badge">0</span></button>
+    <button class="tab-btn" id="tab-live-btn" onclick="showTab('live')">Live <span class="count-badge" style="background:var(--green-light);color:var(--green)" id="live-count-badge">0</span></button>
   </div>
 
   <div id="tab-form">
@@ -311,6 +312,43 @@
         </table>
       </div>
       <div id="wip-empty" class="empty-state" style="display:none"><div class="empty-icon">✅</div><p>No WIP initiatives.</p></div>
+    </div>
+  </div>
+
+  <div id="tab-live" style="display:none">
+    <div style="background:var(--green-light);border:1px solid #a7f3d0;border-radius:var(--radius);padding:0.75rem 1rem;margin-bottom:1rem;font-size:13px;color:var(--green)">
+      <strong>Live / delivered</strong> — initiatives with status Live / Done, Measure, or Ready to be productionised. Kept separate from the Backlog so prioritisation reflects work still to be done, not work already in flight or live.
+    </div>
+    <div class="card" style="padding:0;overflow:hidden">
+      <div style="padding:1rem 1.5rem;border-bottom:1px solid var(--rule)">
+        <div class="backlog-toolbar">
+          <div class="toolbar-filters">
+            <input type="text" id="live-filter-search" placeholder="Search live…" oninput="renderLive()" style="padding:6px 10px;border:1px solid var(--rule);border-radius:var(--radius);font-size:12px;color:var(--ink);background:var(--white);width:200px">
+            <select class="filter-select" id="live-filter-tribe" onchange="renderLive()">
+              <option value="">All tribes</option><option>UKI</option><option>Discovery</option><option>Rewards</option><option>Community</option><option>Platform</option><option>Content</option>
+            </select>
+            <select class="filter-select" id="live-filter-owner" onchange="renderLive()"><option value="">All owners</option></select>
+            <select class="filter-select" id="live-filter-valuestream" onchange="renderLive()"><option value="">All value streams</option></select>
+          </div>
+          <div style="display:flex;gap:8px">
+            <button class="btn btn-ghost" onclick="triggerImport()">↑ Upload CSV</button>
+            <button class="btn btn-success" onclick="exportCSV()">↓ Export CSV</button>
+          </div>
+        </div>
+      </div>
+      <div style="overflow-x:auto">
+        <table>
+          <thead><tr>
+            <th style="width:40px">#</th><th>Initiative</th><th>Brand</th><th>Status</th>
+            <th>Effort</th><th>Go live</th>
+            <th style="min-width:90px">Product<br>prioritisation</th>
+            <th style="min-width:90px">Prioritised<br>by effort</th>
+            <th style="width:60px"></th>
+          </tr></thead>
+          <tbody id="live-body"></tbody>
+        </table>
+      </div>
+      <div id="live-empty" class="empty-state" style="display:none"><div class="empty-icon">🚀</div><p>No live initiatives yet.</p></div>
     </div>
   </div>
 </div>
@@ -623,7 +661,7 @@ function initMSAL() {
       if (!ok) { spError = true; setStatus('offline'); return; }
       spLoadAll(function(loaded) {
         setStatus(loaded ? 'online' : 'offline');
-        updateCount(); renderBacklog();
+        updateCount(); renderBacklog(); renderLive();
       });
     });
   }).catch(function(e) {
@@ -867,7 +905,7 @@ function signInToSharePoint() {
 function loadLocalFallback() {
   try { var r=localStorage.getItem(DATA_KEY); initiatives=r?JSON.parse(r):[]; } catch(e){ initiatives=[]; }
   try { var w=localStorage.getItem(WIP_KEY); wipInitiatives=w?JSON.parse(w):[]; } catch(e){ wipInitiatives=[]; }
-  updateCount(); renderBacklog();
+  updateCount(); renderBacklog(); renderLive();
 }
 
 
@@ -1020,7 +1058,7 @@ function load() {
   setStatus('loading');
   try { var r=localStorage.getItem(DATA_KEY); initiatives=r?JSON.parse(r):[]; } catch(e){ initiatives=[]; }
   try { var w=localStorage.getItem(WIP_KEY); wipInitiatives=w?JSON.parse(w):[]; } catch(e){ wipInitiatives=[]; }
-  updateCount(); renderBacklog();
+  updateCount(); renderBacklog(); renderLive();
   // Show sign-in button after 5s if MSAL hasn't resolved
   setTimeout(function(){
     if(document.getElementById('sp-status').textContent.indexOf('Connecting') > -1) {
@@ -1066,7 +1104,7 @@ function repairAll() {
   function nextRepair(){
     if(idx>=all.length){
       hideOverlay(); setStatus('online');
-      renderBacklog(); renderWIP();
+      renderBacklog(); renderWIP(); renderLive();
       showToast('Repaired '+all.length+' items ✓');
       return;
     }
@@ -1134,14 +1172,14 @@ function refreshFromSP() {
   setStatus('loading');
   spLoadAll(function(ok){
     setStatus(ok ? 'online' : 'offline');
-    updateCount(); renderBacklog(); renderWIP();
+    updateCount(); renderBacklog(); renderLive(); renderWIP();
     showToast(ok ? 'Refreshed ✓' : 'Could not reach SharePoint — showing local data');
   });
 }
 function loadLocalFallback() {
   try { var r=localStorage.getItem(DATA_KEY); initiatives=r?JSON.parse(r):[]; } catch(e){ initiatives=[]; }
   try { var w=localStorage.getItem(WIP_KEY); wipInitiatives=w?JSON.parse(w):[]; } catch(e){ wipInitiatives=[]; }
-  updateCount(); renderBacklog();
+  updateCount(); renderBacklog(); renderLive();
 }
 
 // ── Helpers ──────────────────────────────────────────────────
@@ -1219,7 +1257,9 @@ function addInitiative() {
   } else {
     it.isWip=false;
     initiatives.push(it);saveItem(it);updateCount();resetForm();
-    showToast('Initiative saved to backlog \u2713');showTab('backlog');
+    var landedLive=isLiveStatus(it.status);
+    showToast(landedLive?'Initiative saved to Live \u2713':'Initiative saved to backlog \u2713');
+    showTab(landedLive?'live':'backlog');
   }
 }
 
@@ -1241,6 +1281,15 @@ function statusBadge(s) {
   if(s.includes('Live')||s.includes('Done')||s.includes('Measure'))return'<span class="badge badge-green">'+label+'</span>';
   if(s.includes('Paused'))return'<span class="badge badge-red">'+label+'</span>';
   return'<span class="badge badge-gray">'+label+'</span>';
+}
+
+// Statuses 11–13 (Live / Done, Measure, Ready to be productionised) are delivered/in-flight
+// work — kept out of the Backlog view (and its priority-ranking columns) via this check,
+// shown instead in the separate Live tab. Purely a display-time filter over `initiatives`;
+// no separate array or SharePoint field, so an item moves in/out of Live the instant its
+// Status changes, with no extra move logic needed anywhere.
+function isLiveStatus(s) {
+  return /^1[123]\./.test(s || '');
 }
 
 // ── Sort ──────────────────────────────────────────────────────
@@ -1268,14 +1317,15 @@ function populateFilters(src, ownerEl, streamEl) {
 
 // ── Render Backlog ────────────────────────────────────────────
 function renderBacklog() {
-  populateFilters(initiatives,
+  var backlogSource=initiatives.filter(function(i){return !isLiveStatus(i.status);});
+  populateFilters(backlogSource,
     document.getElementById('filter-owner'),
     document.getElementById('filter-valuestream'));
   var tribeF=document.getElementById('filter-tribe').value,
       ownerF=document.getElementById('filter-owner').value,
       streamF=document.getElementById('filter-valuestream').value,
       searchQ=document.getElementById('filter-search').value.toLowerCase().trim();
-  var list=initiatives.filter(function(i){
+  var list=backlogSource.filter(function(i){
     return(!tribeF||i.tribe===tribeF)&&(!ownerF||i.owner===ownerF)&&(!streamF||i.valuestream===streamF)&&
       (!searchQ||[i.initiative,i.valuestream,i.tribe,i.owner,i.sponsor,i.brand,i.status,i.comments]
         .some(function(v){return v&&v.toLowerCase().indexOf(searchQ)>-1;}));
@@ -1352,6 +1402,48 @@ function renderWIP() {
   }).join('');
 }
 
+// ── Render Live ──────────────────────────────────────────────
+function renderLive() {
+  var liveSource=initiatives.filter(function(i){return isLiveStatus(i.status);});
+  populateFilters(liveSource,
+    document.getElementById('live-filter-owner'),
+    document.getElementById('live-filter-valuestream'));
+  var tribeF=document.getElementById('live-filter-tribe').value,
+      ownerF=document.getElementById('live-filter-owner').value,
+      streamF=document.getElementById('live-filter-valuestream').value,
+      searchQ=document.getElementById('live-filter-search').value.toLowerCase().trim();
+  var list=liveSource.filter(function(i){
+    return(!tribeF||i.tribe===tribeF)&&(!ownerF||i.owner===ownerF)&&(!streamF||i.valuestream===streamF)&&
+      (!searchQ||[i.initiative,i.valuestream,i.tribe,i.owner,i.sponsor,i.brand,i.status,i.comments]
+        .some(function(v){return v&&v.toLowerCase().indexOf(searchQ)>-1;}));
+  });
+  list.forEach(function(i){if(!hasTBC(i))calcScore(i);});
+  list.sort(function(a,b){return (a.initiative||'').localeCompare(b.initiative||'');});
+  var tb=document.getElementById('live-body'),empty=document.getElementById('live-empty');
+  if(list.length===0){tb.innerHTML='';empty.style.display='block';return;}
+  empty.style.display='none';
+  tb.innerHTML=list.map(function(it,idx){
+    var sc=hasTBC(it)?null:it;
+    return'<tr>'+
+      '<td><span class="rank-num">#'+(idx+1)+'</span></td>'+
+      '<td><div class="initiative-name">'+esc(it.initiative)+'</div>'+
+        (it.valuestream?'<div class="initiative-sub">'+esc(it.valuestream)+'</div>':'')+
+        (it.tribe?'<div class="initiative-sub">'+esc(it.tribe)+'</div>':'')+
+      '</td>'+
+      '<td>'+esc(it.brand||'')+'</td>'+
+      '<td>'+statusBadge(it.status)+'</td>'+
+      '<td>'+(it.effortScore?esc(effortMap[it.effortScore]||it.effortScore):'TBC')+'</td>'+
+      '<td style="font-size:12px;color:var(--ink-mid)">'+esc(it.golive||'—')+'</td>'+
+      '<td><span class="priority-score" style="color:var(--ink-mid)">'+(sc?it.productPriority.toFixed(2):'TBC')+'</span></td>'+
+      '<td><span class="priority-score">'+(sc?it.priority.toFixed(2):'TBC')+'</span></td>'+
+      '<td style="white-space:nowrap"><div style="display:flex;flex-direction:column;gap:5px;align-items:center;padding:2px 4px">'+
+        '<button class="btn btn-ghost" style="padding:5px 8px;font-size:14px;line-height:1" onclick="showDetail('+it.id+',false)" title="View">🔍</button>'+
+        '<button class="btn btn-danger" style="padding:5px 8px;font-size:13px;line-height:1" onclick="askDelete('+it.id+',\''+it.initiative.replace(/\\/g,'\\\\').replace(/'/g,"\\'")+'\')" title="Remove">✕</button>'+
+      '</div></td>'+
+    '</tr>';
+  }).join('');
+}
+
 function countTBC(it) {
   return [['Brand',it.brandScore],['Invest. type',it.investScore],['Mission metric',it.mmScore],
           ['VS metric',it.vsScore],['Impact',it.impactScore],['Commercial',it.commScore],
@@ -1378,7 +1470,7 @@ function confirmDelete() {
       var fd=initiatives.find(function(i){return i.id===pendingDelete.id;});if(fd)spId=fd.spId;
       initiatives=initiatives.filter(function(i){return i.id!==pendingDelete.id;});
     }
-    deleteItem(spId);updateCount();renderBacklog();renderWIP();closeModal();showToast('Initiative removed.');
+    deleteItem(spId);updateCount();renderBacklog();renderWIP();renderLive();closeModal();showToast('Initiative removed.');
   });
 }
 
@@ -1387,11 +1479,13 @@ function askDeleteAll(){document.getElementById('delete-all-modal').classList.ad
 function confirmDeleteAll() {
   // Save backup before deleting
   saveBackupToSP('clear-all', function() {
-    var toDel=document.getElementById('tab-wip').style.display==='block'?wipInitiatives.slice():initiatives.slice();
-    if(document.getElementById('tab-wip').style.display==='block'){wipInitiatives=[];}
-    else{initiatives=[];}
+    var wipActive=document.getElementById('tab-wip').style.display==='block';
+    // Backlog "Delete all" must not touch Live items — they share the initiatives array
+    var toDel=wipActive?wipInitiatives.slice():initiatives.filter(function(i){return !isLiveStatus(i.status);});
+    if(wipActive){wipInitiatives=[];}
+    else{initiatives=initiatives.filter(function(i){return isLiveStatus(i.status);});}
     save();toDel.forEach(function(it){if(it.spId)spDeleteItem(it.spId);});
-    updateCount();renderBacklog();renderWIP();
+    updateCount();renderBacklog();renderWIP();renderLive();
     document.getElementById('delete-all-modal').classList.remove('open');
     showToast('Backlog deleted.');
   });
@@ -1399,18 +1493,22 @@ function confirmDeleteAll() {
 
 // ── Counts & tabs ─────────────────────────────────────────────
 function updateCount() {
-  document.getElementById('count-badge').textContent=initiatives.length;
+  document.getElementById('count-badge').textContent=initiatives.filter(function(i){return !isLiveStatus(i.status);}).length;
   document.getElementById('wip-count-badge').textContent=wipInitiatives.length;
+  document.getElementById('live-count-badge').textContent=initiatives.filter(function(i){return isLiveStatus(i.status);}).length;
 }
 function showTab(t) {
   document.getElementById('tab-form').style.display=t==='form'?'block':'none';
   document.getElementById('tab-backlog').style.display=t==='backlog'?'block':'none';
   document.getElementById('tab-wip').style.display=t==='wip'?'block':'none';
+  document.getElementById('tab-live').style.display=t==='live'?'block':'none';
   document.getElementById('tab-form-btn').classList.toggle('active',t==='form');
   document.getElementById('tab-backlog-btn').classList.toggle('active',t==='backlog');
   document.getElementById('tab-wip-btn').classList.toggle('active',t==='wip');
+  document.getElementById('tab-live-btn').classList.toggle('active',t==='live');
   if(t==='backlog')renderBacklog();
   if(t==='wip')renderWIP();
+  if(t==='live')renderLive();
 }
 function showToast(msg) {
   var el=document.getElementById('toast');el.textContent=msg;el.classList.add('show');
@@ -1659,7 +1757,7 @@ function confirmImport(){
     initiatives.push(it);
   });
   save();
-  updateCount();renderBacklog();closeImportModal();showTab('backlog');
+  updateCount();renderBacklog();renderLive();closeImportModal();showTab('backlog');
   var si=0, total=toApply.length;
   setStatus('loading');
   showOverlay('Uploading to SharePoint…','Item 1 of '+total+' — please wait');
@@ -1855,18 +1953,18 @@ function saveDetail() {
   it.productPriority=score.productPriority;
   it.priority=score.priority;
   if(isWip){
-    if(anyTBC){it.isWip=true;saveItem(it);renderWIP();showToast('Changes saved \u2713');showDetail(id,true);}
+    if(anyTBC){it.isWip=true;saveItem(it);renderWIP();renderLive();showToast('Changes saved \u2713');showDetail(id,true);}
     else{it.isWip=false;
       wipInitiatives=wipInitiatives.filter(function(i){return i.id!==id;});initiatives.push(it);
-      saveItem(it);updateCount();renderBacklog();renderWIP();
+      saveItem(it);updateCount();renderBacklog();renderWIP();renderLive();
       document.getElementById('detail-modal').classList.remove('open');
-      showToast(it.initiative+' moved to Backlog \u2713');showTab('backlog');}
+      showToast(it.initiative+' moved to Backlog \u2713');showTab(isLiveStatus(it.status)?'live':'backlog');}
   } else {
     if(anyTBC){it.isWip=true;initiatives=initiatives.filter(function(i){return i.id!==id;});wipInitiatives.push(it);
-      saveItem(it);updateCount();renderBacklog();renderWIP();
+      saveItem(it);updateCount();renderBacklog();renderWIP();renderLive();
       document.getElementById('detail-modal').classList.remove('open');
       showToast(it.initiative+' moved to WIP \u2014 some fields are TBC');showTab('wip');}
-    else{saveItem(it);renderBacklog();showToast('Changes saved \u2713');showDetail(id,false);}
+    else{saveItem(it);updateCount();renderBacklog();renderLive();showToast('Changes saved \u2713');showDetail(id,false);}
   }
 }
 
@@ -1875,7 +1973,7 @@ function moveToBacklog(id) {
   if(hasTBC(it)){showToast('Still has TBC fields \u2014 fill them in first');return;}
   it.isWip=false;
   wipInitiatives=wipInitiatives.filter(function(i){return i.id!==id;});
-  initiatives.push(it);saveItem(it);updateCount();renderBacklog();renderWIP();
+  initiatives.push(it);saveItem(it);updateCount();renderBacklog();renderWIP();renderLive();
   document.getElementById('detail-modal').classList.remove('open');
   showToast(it.initiative+' moved to Backlog \u2713');
 }
