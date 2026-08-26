@@ -173,7 +173,7 @@
           </select></div>
         <div class="field"><label>Status</label>
           <select id="f-status">
-            <option>00. Not started</option><option>01. Needs tech enabler</option><option>02. In define</option><option>03. Ready for discovery</option><option>04. In discovery</option><option>05. Ready for design</option><option>06. In design</option><option>07. Ready for feasibility</option><option>08. In feasibility</option><option>09. Ready to start</option><option>10. In Delivery</option><option>11. Live / Done</option><option>12. Measure</option><option>13. Ready to be productionised</option><option>14. Paused</option>
+            <option>Not started</option><option>Needs Tech Enabler</option><option>Ideate</option><option>Validate</option><option>Plan</option><option>Build</option><option>Measure</option><option>Paused</option>
           </select></div>
         <div class="field"><label>Requesting tribe</label>
           <select id="f-tribe">
@@ -317,7 +317,7 @@
 
   <div id="tab-live" style="display:none">
     <div style="background:var(--green-light);border:1px solid #a7f3d0;border-radius:var(--radius);padding:0.75rem 1rem;margin-bottom:1rem;font-size:13px;color:var(--green)">
-      <strong>Live / delivered</strong> — initiatives with status Live / Done, Measure, or Ready to be productionised. Kept separate from the Backlog so prioritisation reflects work still to be done, not work already in flight or live.
+      <strong>Live / delivered</strong> — initiatives with status Measure. Kept separate from the Backlog so prioritisation reflects work still to be done, not work already in flight or live.
     </div>
     <div class="card" style="padding:0;overflow:hidden">
       <div style="padding:1rem 1.5rem;border-bottom:1px solid var(--rule)">
@@ -455,7 +455,7 @@
         <div class="field" style="grid-column:span 2"><label>Initiative name</label><input id="edit-initiative" type="text" style="font-size:15px;font-weight:500"></div>
         <div class="field"><label>Status</label>
           <select id="edit-status">
-            <option>00. Not started</option><option>01. Needs tech enabler</option><option>02. In define</option><option>03. Ready for discovery</option><option>04. In discovery</option><option>05. Ready for design</option><option>06. In design</option><option>07. Ready for feasibility</option><option>08. In feasibility</option><option>09. Ready to start</option><option>10. In Delivery</option><option>11. Live / Done</option><option>12. Measure</option><option>13. Ready to be productionised</option><option>14. Paused</option>
+            <option>Not started</option><option>Needs Tech Enabler</option><option>Ideate</option><option>Validate</option><option>Plan</option><option>Build</option><option>Measure</option><option>Paused</option>
           </select></div>
         <div class="field"><label>Product / brand</label>
           <select id="edit-brand" onchange="editCalc()">
@@ -786,7 +786,7 @@ function graphToItem(g) {
     brand:           f.Brand          || '',
     valuestream:     f.ValueStream    || '',
     investtype:      f.InvestType     || '',
-    status:          f.Status         || '',
+    status:          migrateStatus(f.Status || ''),
     tribe:           f.Tribe          || '',
     sponsor:         f.Sponsor        || '',
     owner:           f.Owner          || '',
@@ -905,6 +905,7 @@ function signInToSharePoint() {
 function loadLocalFallback() {
   try { var r=localStorage.getItem(DATA_KEY); initiatives=r?JSON.parse(r):[]; } catch(e){ initiatives=[]; }
   try { var w=localStorage.getItem(WIP_KEY); wipInitiatives=w?JSON.parse(w):[]; } catch(e){ wipInitiatives=[]; }
+  migrateStatuses(initiatives); migrateStatuses(wipInitiatives);
   updateCount(); renderBacklog(); renderLive();
 }
 
@@ -1058,6 +1059,7 @@ function load() {
   setStatus('loading');
   try { var r=localStorage.getItem(DATA_KEY); initiatives=r?JSON.parse(r):[]; } catch(e){ initiatives=[]; }
   try { var w=localStorage.getItem(WIP_KEY); wipInitiatives=w?JSON.parse(w):[]; } catch(e){ wipInitiatives=[]; }
+  migrateStatuses(initiatives); migrateStatuses(wipInitiatives);
   updateCount(); renderBacklog(); renderLive();
   // Show sign-in button after 5s if MSAL hasn't resolved
   setTimeout(function(){
@@ -1179,6 +1181,7 @@ function refreshFromSP() {
 function loadLocalFallback() {
   try { var r=localStorage.getItem(DATA_KEY); initiatives=r?JSON.parse(r):[]; } catch(e){ initiatives=[]; }
   try { var w=localStorage.getItem(WIP_KEY); wipInitiatives=w?JSON.parse(w):[]; } catch(e){ wipInitiatives=[]; }
+  migrateStatuses(initiatives); migrateStatuses(wipInitiatives);
   updateCount(); renderBacklog(); renderLive();
 }
 
@@ -1273,23 +1276,51 @@ function resetForm() {
 // ── Status badge ──────────────────────────────────────────────
 function statusBadge(s) {
   if(!s)return'';
-  var label=s.includes('. ')?s.split('. ')[1]:s;
-  if(s.includes('Not started')||s.includes('Needs'))return'<span class="badge badge-gray">'+label+'</span>';
-  if(s.includes('discovery')||s.includes('define'))return'<span class="badge badge-blue">'+label+'</span>';
-  if(s.includes('design')||s.includes('feasibility'))return'<span class="badge badge-amber">'+label+'</span>';
-  if(s.includes('Delivery')||s.includes('Ready to start')||s.includes('productionised'))return'<span class="badge badge-green">'+label+'</span>';
-  if(s.includes('Live')||s.includes('Done')||s.includes('Measure'))return'<span class="badge badge-green">'+label+'</span>';
-  if(s.includes('Paused'))return'<span class="badge badge-red">'+label+'</span>';
-  return'<span class="badge badge-gray">'+label+'</span>';
+  if(s==='Not started'||s==='Needs Tech Enabler')return'<span class="badge badge-gray">'+s+'</span>';
+  if(s==='Ideate'||s==='Validate')return'<span class="badge badge-blue">'+s+'</span>';
+  if(s==='Plan')return'<span class="badge badge-amber">'+s+'</span>';
+  if(s==='Build'||s==='Measure')return'<span class="badge badge-green">'+s+'</span>';
+  if(s==='Paused')return'<span class="badge badge-red">'+s+'</span>';
+  return'<span class="badge badge-gray">'+s+'</span>';
 }
 
-// Statuses 11–13 (Live / Done, Measure, Ready to be productionised) are delivered/in-flight
-// work — kept out of the Backlog view (and its priority-ranking columns) via this check,
-// shown instead in the separate Live tab. Purely a display-time filter over `initiatives`;
-// no separate array or SharePoint field, so an item moves in/out of Live the instant its
-// Status changes, with no extra move logic needed anywhere.
+// Status 'Measure' is delivered/in-flight work being tracked post-launch — kept out of the
+// Backlog view (and its priority-ranking columns) via this check, shown instead in the
+// separate Live tab. Purely a display-time filter over `initiatives`; no separate array or
+// SharePoint field, so an item moves in/out of Live the instant its Status changes.
 function isLiveStatus(s) {
-  return /^1[123]\./.test(s || '');
+  return s === 'Measure';
+}
+
+// ── Status migration: old numbered 15-value scheme → new simplified 8-value scheme ──
+// Applied wherever status is first read from storage (SharePoint, localStorage, CSV import)
+// so the app only ever works with the new set, regardless of how old the underlying data
+// is. Values already in the new set, or not recognised at all, pass through unchanged —
+// migration never silently discards a status.
+var STATUS_MIGRATION_MAP = {
+  '00. Not started':'Not started',
+  '01. Needs tech enabler':'Needs Tech Enabler',
+  '02. In define':'Ideate',
+  '03. Ready for discovery':'Ideate',
+  '04. In discovery':'Validate',
+  '05. Ready for design':'Validate',
+  '06. In design':'Validate',
+  '07. Ready for feasibility':'Validate',
+  '08. In feasibility':'Plan',
+  '09. Ready to start':'Plan',
+  '10. In Delivery':'Build',
+  '11. Live / Done':'Measure',
+  '12. Measure':'Measure',
+  '13. Ready to be productionised':'Build',
+  '14. Paused':'Paused'
+};
+function migrateStatus(s) {
+  if(!s) return s;
+  if(STATUS_MIGRATION_MAP[s] !== undefined) return STATUS_MIGRATION_MAP[s];
+  return s;
+}
+function migrateStatuses(list) {
+  (list||[]).forEach(function(it){ it.status = migrateStatus(it.status); });
 }
 
 // ── Sort ──────────────────────────────────────────────────────
@@ -1669,7 +1700,7 @@ function parseImportCSV(text, filename) {
       brand:brandTxt, brandScore:brand,
       valuestream:getCell(row,'valuestream'),
       investtype:investTxt, investScore:invest,
-      status:getCell(row,'status')||'00. Not started',
+      status:migrateStatus(getCell(row,'status'))||'Not started',
       tribe:getCell(row,'tribe'), sponsor:getCell(row,'sponsor'),
       owner:getCell(row,'owner'), golive:getCell(row,'golive'),
       confluence:'', comments:getCell(row,'comments'),
