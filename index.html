@@ -285,7 +285,7 @@
 
   <div id="tab-wip" style="display:none">
     <div style="background:var(--amber-light);border:1px solid #fde68a;border-radius:var(--radius);padding:0.75rem 1rem;margin-bottom:1rem;font-size:13px;color:var(--amber)">
-      <strong>Work in progress</strong> — initiatives with one or more TBC fields. Edit them to fill in missing details. Once all fields are confirmed they move to the backlog automatically.
+      <strong>Work in progress</strong> — initiatives with one or more TBC fields. Edit them to fill in missing details. Once all fields are confirmed they move to the backlog automatically. Sorted by Product Prioritisation where available (it doesn't need Effort) — use it to decide which items are worth sizing up next.
     </div>
     <div class="card" style="padding:0;overflow:hidden">
       <div style="padding:1rem 1.5rem;border-bottom:1px solid var(--rule)">
@@ -306,7 +306,9 @@
         <table>
           <thead><tr>
             <th style="width:40px">#</th><th>Initiative</th><th>Brand</th><th>Status</th>
-            <th>Effort</th><th>Urgency</th><th>Go live</th><th>TBC fields</th><th style="width:60px"></th>
+            <th>Effort</th><th>Urgency</th><th>Go live</th>
+            <th style="min-width:90px">Product<br>prioritisation</th>
+            <th>TBC fields</th><th style="width:60px"></th>
           </tr></thead>
           <tbody id="wip-body"></tbody>
         </table>
@@ -1022,6 +1024,17 @@ function hasTBC(it) {
     .some(function(v){ return Number(v) === 0; });
 }
 
+// Product priority (unlike full priority) doesn't need Effort — it's only used to divide.
+// So a WIP item can often still be ranked by Product Priority even before anyone's sized
+// the effort, which is exactly the point: it helps decide which WIP items are worth sizing
+// up next. Effort is deliberately excluded from this check.
+function hasProductPriorityInputs(it) {
+  resolveScores(it);
+  return [it.brandScore,it.investScore,it.mmScore,it.vsScore,it.impactScore,
+          it.commScore,it.riskScore,it.urgScore,it.reasonScore]
+    .every(function(v){ return Number(v) !== 0; });
+}
+
 // Canonical priority formula — the ONLY place this calculation should live.
 // productPriority = (brand+invest+urgency+mission+vs+impact+commercial+risk) * (urgency+reason)
 // priority         = productPriority / effort
@@ -1411,7 +1424,25 @@ function renderWIP() {
   var tb=document.getElementById('wip-body'),empty=document.getElementById('wip-empty');
   if(list.length===0){tb.innerHTML='';empty.style.display='block';return;}
   empty.style.display='none';
-  tb.innerHTML=list.map(function(it,idx){
+  // Product Priority doesn't need Effort, so it's often computable even before an item is
+  // fully scored \u2014 sort by it (nulls last) so the highest-value WIP items surface first,
+  // to help decide which ones are worth sizing up for effort next.
+  var scored=list.map(function(it){
+    var pp=null;
+    if(hasProductPriorityInputs(it)){
+      pp=computePriority(it.brandScore,it.investScore,it.urgScore,it.mmScore,it.vsScore,
+        it.impactScore,it.commScore,it.riskScore,it.reasonScore,it.effortScore||1).productPriority;
+    }
+    return {it:it, pp:pp};
+  });
+  scored.sort(function(a,b){
+    if(a.pp===null&&b.pp===null)return 0;
+    if(a.pp===null)return 1;
+    if(b.pp===null)return -1;
+    return b.pp-a.pp;
+  });
+  tb.innerHTML=scored.map(function(obj,idx){
+    var it=obj.it;
     var tbcCount=countTBC(it).length;
     return'<tr>'+
       '<td><span class="rank-num">#'+(idx+1)+'</span></td>'+
@@ -1424,6 +1455,7 @@ function renderWIP() {
       '<td>'+(Number(it.effortScore)===0?'<span class="badge badge-amber">TBC</span>':esc(effortMap[it.effortScore]||it.effortScore))+'</td>'+
       '<td style="font-size:12px;color:var(--ink-mid)">'+(Number(it.urgScore)===0?'<span class="badge badge-amber">TBC</span>':esc(urgMap[it.urgScore]||it.urgency))+'</td>'+
       '<td style="font-size:12px;color:var(--ink-mid)">'+esc(it.golive||'\u2014')+'</td>'+
+      '<td><span class="priority-score" style="color:var(--ink-mid)">'+(obj.pp!==null?obj.pp.toFixed(2):'\u2014')+'</span></td>'+
       '<td><span style="font-size:11px;background:var(--amber-light);color:var(--amber);padding:2px 8px;border-radius:20px;font-weight:500">'+tbcCount+' TBC</span></td>'+
       '<td style="white-space:nowrap"><div style="display:flex;flex-direction:column;gap:5px;align-items:center;padding:2px 4px">'+
         '<button class="btn btn-ghost" style="padding:5px 8px;font-size:14px;line-height:1" onclick="showDetail('+it.id+',true)" title="View">\uD83D\uDD0D</button>'+
