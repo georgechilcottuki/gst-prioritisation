@@ -423,12 +423,9 @@
       <div id="detail-comments-wrap" style="margin-bottom:1rem;display:none">
         <p id="detail-comments" style="font-size:13px;color:var(--ink-mid);line-height:1.6;background:var(--surface);border:1px solid var(--rule);border-radius:var(--radius);padding:0.75rem 1rem;margin:0"></p>
       </div>
-      <div style="margin-bottom:1.25rem">
-        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:0.5rem">
-          <label style="font-size:11px;font-weight:600;letter-spacing:0.06em;text-transform:uppercase;color:var(--ink-light)">Progress update</label>
-          <button class="btn btn-primary" style="font-size:12px;padding:4px 10px" onclick="saveProgressUpdate()">Save</button>
-        </div>
-        <textarea id="detail-progress-update" placeholder="Share a quick update on progress…" style="width:100%;min-height:60px;resize:vertical;padding:8px 10px;border:1px solid var(--rule);border-radius:var(--radius);font-size:13px;font-family:inherit"></textarea>
+      <div id="detail-progress-wrap" style="margin-bottom:1rem;display:none">
+        <div style="font-size:10px;font-weight:600;letter-spacing:0.05em;text-transform:uppercase;color:var(--ink-light);margin-bottom:4px">Progress update</div>
+        <p id="detail-progress-update" style="font-size:13px;color:var(--ink-mid);line-height:1.6;background:var(--surface);border:1px solid var(--rule);border-radius:var(--radius);padding:0.75rem 1rem;margin:0"></p>
       </div>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:1rem" id="detail-meta"></div>
       <div style="border-top:1px solid var(--rule);padding-top:1rem;margin-bottom:1rem">
@@ -471,6 +468,7 @@
             <option value="0" selected>TBC</option><option value="1.3">Sky</option><option value="1.2">PP</option><option value="1.0">BF</option><option value="1.0">PS</option><option value="2.0">All</option>
           </select></div>
         <div class="field" style="grid-column:span 2"><label>Description / comments</label><textarea id="edit-comments" style="min-height:64px;resize:vertical"></textarea></div>
+        <div class="field" style="grid-column:span 2"><label>Progress update</label><textarea id="edit-progress-update" style="min-height:64px;resize:vertical"></textarea></div>
       </div>
       <div style="border-top:1px solid var(--rule);padding-top:1rem;margin-bottom:1rem">
         <div style="font-size:11px;font-weight:600;letter-spacing:0.06em;text-transform:uppercase;color:var(--ink-light);margin-bottom:0.75rem">Details</div>
@@ -1905,7 +1903,9 @@ function showDetail(id, isWip) {
   var cw=document.getElementById('detail-comments-wrap');
   if(it.comments){document.getElementById('detail-comments').textContent=it.comments;cw.style.display='block';}
   else{cw.style.display='none';}
-  document.getElementById('detail-progress-update').value=it.progressUpdate||'';
+  var pw=document.getElementById('detail-progress-wrap');
+  if(it.progressUpdate){document.getElementById('detail-progress-update').textContent=it.progressUpdate;pw.style.display='block';}
+  else{pw.style.display='none';}
   var meta=[['Brand',it.brand||'\u2014'],['Value stream',it.valuestream||'\u2014'],
     ['Investment type',it.investtype||'\u2014'],['Requesting tribe',it.tribe||'\u2014'],
     ['Sponsor',it.sponsor||'\u2014'],['Owner',it.owner||'\u2014'],
@@ -1957,18 +1957,6 @@ function showDetail(id, isWip) {
   document.getElementById('detail-modal').classList.add('open');
 }
 
-// Saves just the Progress Update field directly from the preview/view modal — no need to
-// enter the full edit mode. Only touches this one field; no scores/status recalculated.
-function saveProgressUpdate() {
-  var id=parseFloat(document.getElementById('detail-modal').dataset.editId);
-  var isWip=document.getElementById('detail-modal').dataset.isWip==='true';
-  var src=isWip?wipInitiatives:initiatives;
-  var it=src.find(function(i){return i.id===id;});if(!it)return;
-  it.progressUpdate=document.getElementById('detail-progress-update').value.trim();
-  saveItem(it);
-  showToast('Progress update saved ✓');
-}
-
 function enterEditMode() {
   var id=parseFloat(document.getElementById('detail-modal').dataset.editId);
   var isWip=document.getElementById('detail-modal').dataset.isWip==='true';
@@ -1976,6 +1964,7 @@ function enterEditMode() {
   var it=src.find(function(i){return i.id===id;});if(!it)return;
   document.getElementById('edit-initiative').value=it.initiative||'';
   document.getElementById('edit-comments').value=it.comments||'';
+  document.getElementById('edit-progress-update').value=it.progressUpdate||'';
   document.getElementById('edit-valuestream').value=it.valuestream||'';
   document.getElementById('edit-sponsor').value=it.sponsor||'';
   document.getElementById('edit-owner').value=it.owner||'';
@@ -2028,6 +2017,7 @@ function saveDetail() {
       rsE=document.getElementById('edit-reason'),eE=document.getElementById('edit-effort');
   it.initiative=document.getElementById('edit-initiative').value.trim();
   it.comments=document.getElementById('edit-comments').value.trim();
+  it.progressUpdate=document.getElementById('edit-progress-update').value.trim();
   it.valuestream=document.getElementById('edit-valuestream').value.trim();
   it.sponsor=document.getElementById('edit-sponsor').value.trim();
   it.owner=document.getElementById('edit-owner').value.trim();
