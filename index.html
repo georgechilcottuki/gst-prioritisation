@@ -177,7 +177,7 @@
           </select></div>
         <div class="field"><label>Requesting tribe</label>
           <select id="f-tribe">
-            <option value="">-- Select --</option><option>UKI</option><option>Discovery</option><option>Rewards</option><option>Community</option><option>Platform</option><option>Content</option>
+            <option value="">-- Select --</option><option>UKI</option><option>Discovery</option><option>Rewards</option><option>Community & FTP</option><option>Platform</option><option>Content</option>
           </select></div>
         <div class="field"><label>Sponsor</label><input type="text" id="f-sponsor"></div>
         <div class="field"><label>Owner</label><input type="text" id="f-owner"></div>
@@ -254,7 +254,7 @@
           <div class="toolbar-filters">
             <input type="text" id="filter-search" placeholder="Search initiatives…" oninput="renderBacklog()" style="padding:6px 10px;border:1px solid var(--rule);border-radius:var(--radius);font-size:12px;color:var(--ink);background:var(--white);width:200px">
             <select class="filter-select" id="filter-tribe" onchange="renderBacklog()">
-              <option value="">All tribes</option><option>UKI</option><option>Discovery</option><option>Rewards</option><option>Community</option><option>Platform</option><option>Content</option>
+              <option value="">All tribes</option><option>UKI</option><option>Discovery</option><option>Rewards</option><option>Community & FTP</option><option>Platform</option><option>Content</option>
             </select>
             <select class="filter-select" id="filter-owner" onchange="renderBacklog()"><option value="">All owners</option></select>
             <select class="filter-select" id="filter-valuestream" onchange="renderBacklog()"><option value="">All value streams</option></select>
@@ -293,7 +293,7 @@
           <div class="toolbar-filters">
             <input type="text" id="wip-filter-search" placeholder="Search WIP…" oninput="renderWIP()" style="padding:6px 10px;border:1px solid var(--rule);border-radius:var(--radius);font-size:12px;color:var(--ink);background:var(--white);width:200px">
             <select class="filter-select" id="wip-filter-tribe" onchange="renderWIP()">
-              <option value="">All tribes</option><option>UKI</option><option>Discovery</option><option>Rewards</option><option>Community</option><option>Platform</option><option>Content</option>
+              <option value="">All tribes</option><option>UKI</option><option>Discovery</option><option>Rewards</option><option>Community & FTP</option><option>Platform</option><option>Content</option>
             </select>
             <select class="filter-select" id="wip-filter-owner" onchange="renderWIP()"><option value="">All owners</option></select>
             <select class="filter-select" id="wip-filter-valuestream" onchange="renderWIP()"><option value="">All value streams</option></select>
@@ -327,7 +327,7 @@
           <div class="toolbar-filters">
             <input type="text" id="live-filter-search" placeholder="Search live…" oninput="renderLive()" style="padding:6px 10px;border:1px solid var(--rule);border-radius:var(--radius);font-size:12px;color:var(--ink);background:var(--white);width:200px">
             <select class="filter-select" id="live-filter-tribe" onchange="renderLive()">
-              <option value="">All tribes</option><option>UKI</option><option>Discovery</option><option>Rewards</option><option>Community</option><option>Platform</option><option>Content</option>
+              <option value="">All tribes</option><option>UKI</option><option>Discovery</option><option>Rewards</option><option>Community & FTP</option><option>Platform</option><option>Content</option>
             </select>
             <select class="filter-select" id="live-filter-owner" onchange="renderLive()"><option value="">All owners</option></select>
             <select class="filter-select" id="live-filter-valuestream" onchange="renderLive()"><option value="">All value streams</option></select>
@@ -475,7 +475,7 @@
             </select></div>
           <div class="field"><label>Requesting tribe</label>
             <select id="edit-tribe">
-              <option value="">-- Select --</option><option>UKI</option><option>Discovery</option><option>Rewards</option><option>Community</option><option>Platform</option><option>Content</option>
+              <option value="">-- Select --</option><option>UKI</option><option>Discovery</option><option>Rewards</option><option>Community & FTP</option><option>Platform</option><option>Content</option>
             </select></div>
           <div class="field"><label>Sponsor</label><input type="text" id="edit-sponsor"></div>
           <div class="field"><label>Owner</label><input type="text" id="edit-owner"></div>
@@ -789,7 +789,7 @@ function graphToItem(g) {
     valuestream:     f.ValueStream    || '',
     investtype:      f.InvestType     || '',
     status:          migrateStatus(f.Status || ''),
-    tribe:           f.Tribe          || '',
+    tribe:           migrateTribe(f.Tribe || ''),
     sponsor:         f.Sponsor        || '',
     owner:           f.Owner          || '',
     golive:          f.GoLive         || '',
@@ -908,6 +908,7 @@ function loadLocalFallback() {
   try { var r=localStorage.getItem(DATA_KEY); initiatives=r?JSON.parse(r):[]; } catch(e){ initiatives=[]; }
   try { var w=localStorage.getItem(WIP_KEY); wipInitiatives=w?JSON.parse(w):[]; } catch(e){ wipInitiatives=[]; }
   migrateStatuses(initiatives); migrateStatuses(wipInitiatives);
+  migrateTribes(initiatives); migrateTribes(wipInitiatives);
   updateCount(); renderBacklog(); renderLive();
 }
 
@@ -1073,6 +1074,7 @@ function load() {
   try { var r=localStorage.getItem(DATA_KEY); initiatives=r?JSON.parse(r):[]; } catch(e){ initiatives=[]; }
   try { var w=localStorage.getItem(WIP_KEY); wipInitiatives=w?JSON.parse(w):[]; } catch(e){ wipInitiatives=[]; }
   migrateStatuses(initiatives); migrateStatuses(wipInitiatives);
+  migrateTribes(initiatives); migrateTribes(wipInitiatives);
   updateCount(); renderBacklog(); renderLive();
   // Show sign-in button after 5s if MSAL hasn't resolved
   setTimeout(function(){
@@ -1195,6 +1197,7 @@ function loadLocalFallback() {
   try { var r=localStorage.getItem(DATA_KEY); initiatives=r?JSON.parse(r):[]; } catch(e){ initiatives=[]; }
   try { var w=localStorage.getItem(WIP_KEY); wipInitiatives=w?JSON.parse(w):[]; } catch(e){ wipInitiatives=[]; }
   migrateStatuses(initiatives); migrateStatuses(wipInitiatives);
+  migrateTribes(initiatives); migrateTribes(wipInitiatives);
   updateCount(); renderBacklog(); renderLive();
 }
 
@@ -1334,6 +1337,15 @@ function migrateStatus(s) {
 }
 function migrateStatuses(list) {
   (list||[]).forEach(function(it){ it.status = migrateStatus(it.status); });
+}
+
+// 'Community' tribe renamed to 'Community & FTP' — same display-time migration pattern as
+// status above, applied wherever tribe is first read from external data.
+function migrateTribe(t) {
+  return t === 'Community' ? 'Community & FTP' : t;
+}
+function migrateTribes(list) {
+  (list||[]).forEach(function(it){ it.tribe = migrateTribe(it.tribe); });
 }
 
 // ── Sort ──────────────────────────────────────────────────────
@@ -1733,7 +1745,7 @@ function parseImportCSV(text, filename) {
       valuestream:getCell(row,'valuestream'),
       investtype:investTxt, investScore:invest,
       status:migrateStatus(getCell(row,'status'))||'Not started',
-      tribe:getCell(row,'tribe'), sponsor:getCell(row,'sponsor'),
+      tribe:migrateTribe(getCell(row,'tribe')), sponsor:getCell(row,'sponsor'),
       owner:getCell(row,'owner'), golive:getCell(row,'golive'),
       confluence:'', comments:getCell(row,'comments'),
       missionmetric:mmTxt, mmScore:mm,
