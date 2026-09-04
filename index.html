@@ -423,6 +423,10 @@
       <div id="detail-comments-wrap" style="margin-bottom:1rem;display:none">
         <p id="detail-comments" style="font-size:13px;color:var(--ink-mid);line-height:1.6;background:var(--surface);border:1px solid var(--rule);border-radius:var(--radius);padding:0.75rem 1rem;margin:0"></p>
       </div>
+      <div style="margin-bottom:1rem">
+        <div style="font-size:10px;font-weight:600;letter-spacing:0.05em;text-transform:uppercase;color:var(--ink-light);margin-bottom:4px">Progress update</div>
+        <p id="detail-progress-update" style="font-size:13px;font-weight:500;background:var(--surface);border:1px solid var(--rule);border-radius:var(--radius);padding:0.75rem 1rem;margin:0"></p>
+      </div>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:1rem" id="detail-meta"></div>
       <div style="border-top:1px solid var(--rule);padding-top:1rem;margin-bottom:1rem">
         <div style="font-size:11px;font-weight:600;letter-spacing:0.06em;text-transform:uppercase;color:var(--ink-light);margin-bottom:0.75rem">Scoring breakdown</div>
@@ -1899,11 +1903,11 @@ function showDetail(id, isWip) {
   var cw=document.getElementById('detail-comments-wrap');
   if(it.comments){document.getElementById('detail-comments').textContent=it.comments;cw.style.display='block';}
   else{cw.style.display='none';}
+  document.getElementById('detail-progress-update').textContent=it.progressUpdate||'\u2014';
   var meta=[['Brand',it.brand||'\u2014'],['Value stream',it.valuestream||'\u2014'],
     ['Investment type',it.investtype||'\u2014'],['Requesting tribe',it.tribe||'\u2014'],
     ['Sponsor',it.sponsor||'\u2014'],['Owner',it.owner||'\u2014'],
-    ['Est. go live',it.golive||'\u2014'],['Date added',it.dateAdded||'\u2014'],
-    ['Progress update',esc(it.progressUpdate||'')||'\u2014']];
+    ['Est. go live',it.golive||'\u2014'],['Date added',it.dateAdded||'\u2014']];
   if(it.confluence)meta.push(['Confluence','<a href="'+esc(it.confluence)+'" target="_blank" style="color:var(--accent)">Open link</a>']);
   document.getElementById('detail-meta').innerHTML=meta.map(function(m){
     return'<div style="background:var(--surface);border:1px solid var(--rule);border-radius:var(--radius);padding:0.75rem 1rem">'+
