@@ -423,6 +423,13 @@
       <div id="detail-comments-wrap" style="margin-bottom:1rem;display:none">
         <p id="detail-comments" style="font-size:13px;color:var(--ink-mid);line-height:1.6;background:var(--surface);border:1px solid var(--rule);border-radius:var(--radius);padding:0.75rem 1rem;margin:0"></p>
       </div>
+      <div style="margin-bottom:1.25rem">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:0.5rem">
+          <label style="font-size:11px;font-weight:600;letter-spacing:0.06em;text-transform:uppercase;color:var(--ink-light)">Progress update</label>
+          <button class="btn btn-primary" style="font-size:12px;padding:4px 10px" onclick="saveProgressUpdate()">Save</button>
+        </div>
+        <textarea id="detail-progress-update" placeholder="Share a quick update on progress…" style="width:100%;min-height:60px;resize:vertical;padding:8px 10px;border:1px solid var(--rule);border-radius:var(--radius);font-size:13px;font-family:inherit"></textarea>
+      </div>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:1rem" id="detail-meta"></div>
       <div style="border-top:1px solid var(--rule);padding-top:1rem;margin-bottom:1rem">
         <div style="font-size:11px;font-weight:600;letter-spacing:0.06em;text-transform:uppercase;color:var(--ink-light);margin-bottom:0.75rem">Scoring breakdown</div>
@@ -761,6 +768,7 @@ function itemToGraph(it) {
       GoLive:          it.golive        || '',
       Confluence:      it.confluence    || '',
       Comments:        it.comments      || '',
+      ProgressUpdate:  it.progressUpdate || '',
       MissionMetric:   it.missionmetric || '',
       VSMetric:        it.vsmetric      || '',
       Impact:          it.impact        || '',
@@ -795,6 +803,7 @@ function graphToItem(g) {
     golive:          f.GoLive         || '',
     confluence:      f.Confluence     || '',
     comments:        f.Comments       || '',
+    progressUpdate:  f.ProgressUpdate || '',
     missionmetric:   f.MissionMetric  || '',
     vsmetric:        f.VSMetric       || '',
     impact:          f.Impact         || '',
@@ -1139,7 +1148,7 @@ function saveBackupToSP(reason, callback) {
     var cols = ['Rank','Initiative','Brand','Value Stream','Investment Type','Status','Tribe',
       'Sponsor','Owner','Go Live','Mission Metric','VS Metric','Impact','Commercial Opp',
       'Biz Risk','Urgency','Reason','Effort','Product Priority','Priority Score',
-      'Date Added','Comments','WIP'];
+      'Date Added','Comments','Progress Update','WIP'];
     var sorted = initiatives.slice().sort(function(a,b){ return (b.productPriority||0)-(a.productPriority||0); });
     var allItems = sorted.concat(wipInitiatives);
     var rows = allItems.map(function(it, i) {
@@ -1149,7 +1158,7 @@ function saveBackupToSP(reason, callback) {
         it.impact, it.commercial, it.bizrisk, it.urgency, it.reason, it.effort,
         it.productPriority ? it.productPriority.toFixed(2) : 'TBC',
         it.priority ? it.priority.toFixed(2) : 'TBC',
-        it.dateAdded, it.comments, it.isWip ? 'Yes' : 'No']
+        it.dateAdded, it.comments, it.progressUpdate, it.isWip ? 'Yes' : 'No']
       .map(function(v){ return '"' + String(v||'').replace(/"/g,'""') + '"'; }).join(',');
     });
     var csv = [cols.map(function(c){ return '"'+c+'"'; }).join(',')].concat(rows).join('\n');
@@ -1595,7 +1604,7 @@ function exportCSV() {
   if(!initiatives.length&&!wipInitiatives.length){showToast('Nothing to export yet.');return;}
   var cols=['Rank','Initiative','Brand','Value Stream','Investment Type','Status','Tribe','Sponsor','Owner',
     'Go Live','Mission Metric','VS Metric','Impact','Commercial Opp','Biz Risk','Urgency','Reason',
-    'Effort','Product Priority','Priority Score','Date Added','Comments','WIP'];
+    'Effort','Product Priority','Priority Score','Date Added','Comments','Progress Update','WIP'];
   // Sort backlog by product priority descending before export
   var sortedInit = initiatives.slice().sort(function(a,b){
     if(!hasTBC(a))calcScore(a); if(!hasTBC(b))calcScore(b);
@@ -1611,7 +1620,7 @@ function exportCSV() {
       it.bizrisk,it.urgency,it.reason,it.effort,
       it.productPriority?it.productPriority.toFixed(2):'TBC',
       it.priority?it.priority.toFixed(2):'TBC',
-      it.dateAdded,it.comments,obj.wip?'Yes':'No']
+      it.dateAdded,it.comments,it.progressUpdate,obj.wip?'Yes':'No']
     .map(function(v){return'"'+String(v||'').replace(/"/g,'""')+'"';}).join(',');
   });
   var csv=[cols.map(function(c){return'"'+c+'"';}).join(',')].concat(rows).join('\n');
@@ -1685,7 +1694,8 @@ function parseImportCSV(text, filename) {
     urgency:['urgency'],
     reason:['reason','reason for doing it'],
     effort:['effort','effort (t-shirt)','effort (t-shirt size)'],
-    comments:['comments','description']
+    comments:['comments','description'],
+    progressUpdate:['progress update','progress']
   };
 
   function findCol(key){
@@ -1747,7 +1757,7 @@ function parseImportCSV(text, filename) {
       status:migrateStatus(getCell(row,'status'))||'Not started',
       tribe:migrateTribe(getCell(row,'tribe')), sponsor:getCell(row,'sponsor'),
       owner:getCell(row,'owner'), golive:getCell(row,'golive'),
-      confluence:'', comments:getCell(row,'comments'),
+      confluence:'', comments:getCell(row,'comments'), progressUpdate:getCell(row,'progressUpdate'),
       missionmetric:mmTxt, mmScore:mm,
       vsmetric:vsTxt, vsScore:vs,
       impact:impactTxt||'N/A', impactScore:impact,
@@ -1895,6 +1905,7 @@ function showDetail(id, isWip) {
   var cw=document.getElementById('detail-comments-wrap');
   if(it.comments){document.getElementById('detail-comments').textContent=it.comments;cw.style.display='block';}
   else{cw.style.display='none';}
+  document.getElementById('detail-progress-update').value=it.progressUpdate||'';
   var meta=[['Brand',it.brand||'\u2014'],['Value stream',it.valuestream||'\u2014'],
     ['Investment type',it.investtype||'\u2014'],['Requesting tribe',it.tribe||'\u2014'],
     ['Sponsor',it.sponsor||'\u2014'],['Owner',it.owner||'\u2014'],
@@ -1944,6 +1955,18 @@ function showDetail(id, isWip) {
   document.getElementById('detail-view-mode').style.display='block';
   document.getElementById('detail-edit-mode').style.display='none';
   document.getElementById('detail-modal').classList.add('open');
+}
+
+// Saves just the Progress Update field directly from the preview/view modal — no need to
+// enter the full edit mode. Only touches this one field; no scores/status recalculated.
+function saveProgressUpdate() {
+  var id=parseFloat(document.getElementById('detail-modal').dataset.editId);
+  var isWip=document.getElementById('detail-modal').dataset.isWip==='true';
+  var src=isWip?wipInitiatives:initiatives;
+  var it=src.find(function(i){return i.id===id;});if(!it)return;
+  it.progressUpdate=document.getElementById('detail-progress-update').value.trim();
+  saveItem(it);
+  showToast('Progress update saved ✓');
 }
 
 function enterEditMode() {
